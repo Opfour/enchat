@@ -118,6 +118,7 @@ enchat wipe                                      # Securely remove all traces
 | `/help` | Show available commands |
 | `/clear` | Clear screen |
 | `/exit` | Leave chat |
+| `/who` | Show all active room participants |
 
 ### Self-Hosted ntfy
 

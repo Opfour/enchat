@@ -125,6 +125,9 @@ class ChatUI:
 
 ui = ChatUI()
 
+# Track active room participants
+room_participants = set()
+
 def gen_key(secret: str) -> bytes:
     h = hashlib.sha256(secret.encode()).digest()
     return base64.urlsafe_b64encode(h)
@@ -186,6 +189,9 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
     seen = set()
     connection_attempts = 0
     
+    # Add ourselves to participants
+    room_participants.add(nick)
+    
     while not stop_event.is_set():
         try:
             if connection_attempts > 0:
@@ -212,9 +218,12 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
                         what = line.split("] ")[-1]
                         if who != nick:
                             if what == "joined":
+                                room_participants.add(who)
                                 ui.print_system_message(f"{who} joined the chat", "join")
                                 notify(f"{who} joined")
                             elif what == "left":
+                                if who in room_participants:
+                                    room_participants.remove(who)
                                 ui.print_system_message(f"{who} left the chat", "leave")
                                 notify(f"{who} left")
                         continue
@@ -384,7 +393,26 @@ def main():
             print(f"\n{Fore.CYAN}📖 Available commands:{Style.RESET_ALL}")
             print(f"  {Fore.GREEN}/exit{Style.RESET_ALL}  - Leave the chat")
             print(f"  {Fore.GREEN}/clear{Style.RESET_ALL} - Clear the screen") 
-            print(f"  {Fore.GREEN}/help{Style.RESET_ALL}  - Show this help\n")
+            print(f"  {Fore.GREEN}/help{Style.RESET_ALL}  - Show this help")
+            print(f"  {Fore.GREEN}/who{Style.RESET_ALL}   - Show active room participants\n")
+            continue
+        elif msg == "/who":
+            print("\033[1A\033[2K", end="")  # Move up one line and clear it
+            
+            # Create an encrypted copy of the participant list
+            encrypted_participants = []
+            for participant in sorted(room_participants):
+                encrypted_participants.append(encrypt_msg(participant, fernet))
+            
+            # Display participants locally
+            count = len(room_participants)
+            print(f"\n{Fore.CYAN}👥 Room participants ({count}):{Style.RESET_ALL}")
+            for participant in sorted(room_participants):
+                if participant == nick:
+                    print(f"  {Fore.GREEN}{participant} (you){Style.RESET_ALL}")
+                else:
+                    print(f"  {Fore.YELLOW}{participant}{Style.RESET_ALL}")
+            print()
             continue
         elif msg.strip():
             if len(msg) > MAX_MESSAGE_LENGTH:

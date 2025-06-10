@@ -273,15 +273,61 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
 def send_msg(room: str, msg: str, nick: str, fernet: Fernet, ntfy_server: str):
     try:
         enc = encrypt_msg(msg, fernet)
-        response = requests.post(f"{ntfy_server}/{room}", data=f"[{nick}] {enc}", timeout=10)
-        if response.status_code != 200:
-            ui.print_system_message(f"Failed to send message (HTTP {response.status_code})", "error")
+        max_retries = 3
+        retry_count = 0
+        retry_delay = 1
+        
+        while retry_count < max_retries:
+            response = requests.post(f"{ntfy_server}/{room}", data=f"[{nick}] {enc}", timeout=10)
+            
+            if response.status_code == 200:
+                return True  # Message sent successfully
+            elif response.status_code == 429:
+                retry_count += 1
+                if retry_count < max_retries:
+                    # Get retry delay from header or use exponential backoff
+                    if 'Retry-After' in response.headers:
+                        retry_seconds = int(response.headers['Retry-After'])
+                    else:
+                        retry_seconds = retry_delay
+                        retry_delay *= 2  # Exponential backoff
+                    
+                    ui.print_system_message(f"Rate limited. Retrying in {retry_seconds}s ({retry_count}/{max_retries})", "error")
+                    time.sleep(retry_seconds)
+                else:
+                    ui.print_system_message(f"Failed to send after {max_retries} retries. Server is rate limiting requests.", "error")
+            else:
+                ui.print_system_message(f"Failed to send message (HTTP {response.status_code})", "error")
+                break
+        
     except Exception as e:
         ui.print_system_message(f"Failed to send message: {str(e)[:50]}", "error")
+        return False
 
 def send_system(room: str, nick: str, what: str, ntfy_server: str):
     try:
-        requests.post(f"{ntfy_server}/{room}", data=f"[SYSTEM][{nick}] {what}", timeout=10)
+        max_retries = 2
+        retry_count = 0
+        retry_delay = 1
+        
+        while retry_count < max_retries:
+            response = requests.post(f"{ntfy_server}/{room}", data=f"[SYSTEM][{nick}] {what}", timeout=10)
+            
+            if response.status_code == 200:
+                return True
+            elif response.status_code == 429 and retry_count < max_retries - 1:
+                retry_count += 1
+                # Get retry delay from header or use exponential backoff
+                if 'Retry-After' in response.headers:
+                    retry_seconds = int(response.headers['Retry-After'])
+                else:
+                    retry_seconds = retry_delay
+                    retry_delay *= 2
+                
+                time.sleep(retry_seconds)
+            else:
+                # Silent fail for system messages after retries
+                break
     except Exception:
         pass  # Silent fail for system messages
 
@@ -298,6 +344,9 @@ def setup_initial_config(args):
         if room and len(room) >= 3:
             break
         print(f"{Fore.RED}Please enter a room name with at least 3 characters.{Style.RESET_ALL}")
+    
+    # Normalize room name to ensure consistent behavior across servers
+    room = room.lower().strip()
     
     # Nickname configuration  
     while True:
@@ -316,6 +365,7 @@ def setup_initial_config(args):
     # Server configuration
     ntfy_server = DEFAULT_NTFY_SERVER
     if not args.server:
+        print(f"{Fore.CYAN}Note: The default server (ntfy.sh) may have rate limits. For high-volume use, consider running your own server.{Style.RESET_ALL}")
         server_input = input(f"{Fore.YELLOW}🌐 ntfy server URL (press Enter for default {DEFAULT_NTFY_SERVER}): {Style.RESET_ALL}").strip()
         if server_input:
             ntfy_server = server_input.rstrip('/')
@@ -353,6 +403,9 @@ def main():
     if not all([room, nick, secret]):
         room, nick, secret, ntfy_server = setup_initial_config(args)
     else:
+        # Normalize room name from saved config to ensure consistency
+        room = room.lower().strip()
+        
         os.system("clear")
         ui.print_header()
         print(f"{Fore.GREEN}✨ Welcome back, {Style.BRIGHT}{nick}{Style.RESET_ALL}{Fore.GREEN}!{Style.RESET_ALL}")
@@ -431,7 +484,20 @@ def main():
             print(f"  {Fore.GREEN}/exit{Style.RESET_ALL}  - Leave the chat")
             print(f"  {Fore.GREEN}/clear{Style.RESET_ALL} - Clear the screen") 
             print(f"  {Fore.GREEN}/help{Style.RESET_ALL}  - Show this help")
-            print(f"  {Fore.GREEN}/who{Style.RESET_ALL}   - Show active room participants\n")
+            print(f"  {Fore.GREEN}/who{Style.RESET_ALL}   - Show active room participants")
+            print(f"  {Fore.GREEN}/ratelimit{Style.RESET_ALL} - Show information about rate limiting\n")
+            continue
+        elif msg == "/ratelimit":
+            print("\033[1A\033[2K", end="")  # Move up one line and clear it
+            print(f"\n{Fore.CYAN}⚠️ Rate Limiting Information:{Style.RESET_ALL}")
+            print(f"  • The ntfy.sh public server has rate limits to prevent abuse")
+            print(f"  • If you hit a rate limit (HTTP 429), the app will automatically retry")
+            print(f"  • Tips to avoid rate limits:")
+            print(f"    - Wait a few seconds between messages")
+            print(f"    - Use a unique room name that others are unlikely to use")
+            print(f"    - Consider running your own ntfy server for high-volume use")
+            print(f"      See: https://docs.ntfy.sh/install/")
+            print()
             continue
         elif msg == "/who":
             print("\033[1A\033[2K", end="")  # Move up one line and clear it

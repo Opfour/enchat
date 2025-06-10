@@ -122,14 +122,21 @@ enchat wipe                                      # Securely remove all traces
 
 ### Self-Hosted ntfy
 
-For complete control over your infrastructure:
+Enchat works with the public ntfy.sh server by default, but that service may enforce rate limits. Hosting your own ntfy server on a VPS gives you unlimited usage and full infrastructure control. It's optional but recommended for high‑volume or sensitive communications.
+
+To get started, run the included setup script on your VPS (you'll need a domain pointing to the server):
 
 ```bash
-# Docker
-docker run -d --name ntfy -p 80:80 binwiederhier/ntfy serve
+# On your VPS
+./setup-selfhosted-ntfy-server.sh
+```
 
-# Then use with Enchat
-enchat --server https://your-ntfy-server.com
+This script installs and configures ntfy (via Docker or a systemd service), obtains TLS certificates from Let's Encrypt, and sets up a service ready to serve at your domain (e.g., `ntfy.yourdomain.com`).
+
+Once your ntfy server is running, point Enchat to it:
+
+```bash
+enchat --server https://your-ntfy-domain.com
 ```
 
 ## 🔧 How It Works

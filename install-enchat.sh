@@ -51,10 +51,26 @@ if $USE_VENV; then
   source "$VENV_DIR/bin/activate"
   echo "📦 Installing dependencies in venv…"
   pip install --upgrade pip
-  pip install requests colorama cryptography
+  
+  # Check if running on macOS with LibreSSL
+  if [[ "$(uname)" == "Darwin" ]] && python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" | grep -q "LibreSSL"; then
+    echo "🍎 macOS with LibreSSL detected - installing compatible dependencies"
+    pip install urllib3==1.26.16  # Install compatible urllib3 version first
+    pip install requests colorama cryptography
+  else
+    pip install requests colorama cryptography
+  fi
 else
   echo "⚠️  Virtualenv not available – installing dependencies to user site"
-  pip3 install --user requests colorama cryptography
+  
+  # Check if running on macOS with LibreSSL
+  if [[ "$(uname)" == "Darwin" ]] && python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" | grep -q "LibreSSL"; then
+    echo "🍎 macOS with LibreSSL detected - installing compatible dependencies"
+    pip3 install --user urllib3==1.26.16  # Install compatible urllib3 version first
+    pip3 install --user requests colorama cryptography
+  else
+    pip3 install --user requests colorama cryptography
+  fi
 fi
 
 # 4) Create enhanced launcher with wipe functionality in ~/bin

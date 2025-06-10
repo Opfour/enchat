@@ -127,6 +127,8 @@ ui = ChatUI()
 
 # Track active room participants
 room_participants = set()
+last_ping_time = 0
+PING_INTERVAL = 30  # Send a ping every 30 seconds
 
 def gen_key(secret: str) -> bytes:
     h = hashlib.sha256(secret.encode()).digest()
@@ -188,6 +190,7 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
     url = f"{ntfy_server}/{room}/raw"
     seen = set()
     connection_attempts = 0
+    global last_ping_time
     
     # Add ourselves to participants
     room_participants.add(nick)
@@ -216,16 +219,29 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
                     if line.startswith("[SYSTEM]["):
                         who = line.split("]")[1][1:]
                         what = line.split("] ")[-1]
-                        if who != nick:
-                            if what == "joined":
-                                room_participants.add(who)
+                        
+                        # Handle participant tracking
+                        if what == "joined":
+                            room_participants.add(who)
+                            if who != nick:
                                 ui.print_system_message(f"{who} joined the chat", "join")
                                 notify(f"{who} joined")
-                            elif what == "left":
-                                if who in room_participants:
-                                    room_participants.remove(who)
+                                # Send a ping after someone joins to help them discover existing participants
+                                send_system(room, nick, "ping", ntfy_server)
+                        elif what == "left":
+                            if who in room_participants:
+                                room_participants.remove(who)
+                            if who != nick:
                                 ui.print_system_message(f"{who} left the chat", "leave")
                                 notify(f"{who} left")
+                        elif what == "ping" and who != nick:
+                            # When we receive a ping, add the sender to participants if not already there
+                            # and send our own ping in response if we haven't recently
+                            room_participants.add(who)
+                            current_time = time.time()
+                            if current_time - last_ping_time > 5:  # Limit ping responses to avoid flooding
+                                send_system(room, nick, "ping", ntfy_server)
+                                last_ping_time = current_time
                         continue
                     
                     # Chat messages
@@ -233,6 +249,10 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
                         continue
                     sender = line.split("]")[0][1:]
                     data   = "]".join(line.split("]")[1:]).strip()
+                    
+                    # Add message sender to participants list
+                    if sender != nick:
+                        room_participants.add(sender)
                     
                     plain = decrypt_msg(data, fernet)
                     if plain is not None:
@@ -364,6 +384,23 @@ def main():
     # Set connection status to connected after starting listener
     time.sleep(0.5)
     ui.print_connection_status("connected", "Ready to chat!")
+    
+    # Send initial ping to announce presence to existing participants
+    send_system(room, nick, "ping", ntfy_server)
+    
+    # Start ping thread to maintain presence
+    def ping_thread():
+        global last_ping_time
+        while not stop_event.is_set():
+            current_time = time.time()
+            if current_time - last_ping_time > PING_INTERVAL:
+                send_system(room, nick, "ping", ntfy_server)
+                last_ping_time = current_time
+            time.sleep(5)  # Check every 5 seconds
+    
+    ping_t = threading.Thread(target=ping_thread, daemon=True)
+    ping_t.start()
+    
     print()
 
     def on_exit(sig, frame):

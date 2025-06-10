@@ -35,10 +35,11 @@ The ntfy server acts as a **message relay only** - it cannot decrypt your messag
 ## ✨ Features
 
 - **Real-time encrypted chat** with timestamps and status indicators
+- **Multiple server options** including dedicated enchat server
 - **Self-hosted ntfy support** for complete infrastructure control
 - **Auto-reconnection** with smart retry logic
 - **Desktop notifications** (Linux, macOS)
-- **Command system** (`/help`, `/clear`, `/exit`)
+- **Command system** (`/help`, `/clear`, `/exit`, `/server`, `/who`)
 - **Smart input handling** and message validation
 - **Cross-platform** terminal support
 
@@ -78,7 +79,16 @@ Welcome to Enchat! Let's set up your encrypted chat.
 🏠 Room name (unique, secret): my-secret-room
 👤 Your nickname: alice
 🔐 Encryption passphrase (hidden): ••••••••
-🌐 ntfy server URL (press Enter for default https://ntfy.sh): 
+
+🌐 Select a ntfy server:
+  1) Default ntfy server (https://ntfy.sh)
+     - Public server with rate limits
+  2) Enchat ntfy server (https://enchat.sudosallie.com)
+     - Dedicated server for enchat with more generous limits
+  3) Custom server
+     - Your own or another ntfy server
+Enter choice [1-3] (default: 1): 2
+
 💾 Save settings for auto-reconnect? [Y/n]: y
 ```
 
@@ -108,8 +118,29 @@ Welcome to Enchat! Let's set up your encrypted chat.
 enchat --help                                    # Show help
 enchat --reset                                   # Clear saved settings
 enchat --server https://your-ntfy.example.com   # Use custom ntfy server
+enchat --enchat-server                          # Use dedicated enchat server
+enchat --default-server                         # Use default ntfy.sh server
 enchat wipe                                      # Securely remove all traces
 ```
+
+### Server Options
+
+Enchat supports multiple ntfy servers:
+
+1. **Default Server** (ntfy.sh)
+   - Public server with rate limits
+   - Good for occasional use
+
+2. **Dedicated Enchat Server** (enchat.sudosallie.com)
+   - Optimized for chat with generous rate limits
+   - Recommended for regular use
+
+3. **Self-Hosted Server**
+   - Complete control over infrastructure
+   - Unlimited usage with no rate limits
+   - Best for sensitive or high-volume communications
+
+You can select your server during initial setup or use command line options to specify.
 
 ### In-Chat Commands
 
@@ -119,6 +150,8 @@ enchat wipe                                      # Securely remove all traces
 | `/clear` | Clear screen |
 | `/exit` | Leave chat |
 | `/who` | Show all active room participants |
+| `/server` | Display current server information |
+| `/ratelimit` | Show rate limiting information and tips |
 
 ### Self-Hosted ntfy
 
@@ -190,6 +223,12 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 **Connection Issues:**
 - Verify internet connection and ntfy server accessibility
 - Try default ntfy.sh if custom server fails
+
+**Rate Limiting Issues:**
+- If you see HTTP 429 errors, the server is rate limiting your requests
+- Use the `/ratelimit` command to see tips on avoiding rate limits
+- Consider switching to the enchat server with `--enchat-server`
+- For high-volume use, set up your own ntfy server
 
 **Encryption Issues:**
 - Ensure exact passphrase match across all participants

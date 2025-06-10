@@ -18,6 +18,7 @@ from datetime import datetime
 init(autoreset=True)
 CONF_FILE = os.path.expanduser("~/.enchat.conf")
 DEFAULT_NTFY_SERVER = "https://ntfy.sh"
+ENCHAT_NTFY_SERVER = "https://enchat.sudosallie.com"
 
 # Enhanced UI Constants
 BORDER_CHAR = "─"
@@ -364,13 +365,38 @@ def setup_initial_config(args):
     
     # Server configuration
     ntfy_server = DEFAULT_NTFY_SERVER
-    if not args.server:
-        print(f"{Fore.CYAN}Note: The default server (ntfy.sh) may have rate limits. For high-volume use, consider running your own server.{Style.RESET_ALL}")
-        server_input = input(f"{Fore.YELLOW}🌐 ntfy server URL (press Enter for default {DEFAULT_NTFY_SERVER}): {Style.RESET_ALL}").strip()
-        if server_input:
-            ntfy_server = server_input.rstrip('/')
-    else:
+    if not (args.server or args.enchat_server or args.default_server):
+        print(f"{Fore.CYAN}🌐 Select a ntfy server:{Style.RESET_ALL}")
+        print(f"  {Fore.YELLOW}1){Style.RESET_ALL} Default ntfy server ({DEFAULT_NTFY_SERVER})")
+        print(f"     - Public server with rate limits")
+        print(f"  {Fore.YELLOW}2){Style.RESET_ALL} Enchat ntfy server ({ENCHAT_NTFY_SERVER})")
+        print(f"     - Dedicated server for enchat with more generous limits")
+        print(f"  {Fore.YELLOW}3){Style.RESET_ALL} Custom server")
+        print(f"     - Your own or another ntfy server")
+        
+        while True:
+            server_choice = input(f"{Fore.YELLOW}Enter choice [1-3] (default: 1): {Style.RESET_ALL}").strip() or "1"
+            if server_choice == "1":
+                ntfy_server = DEFAULT_NTFY_SERVER
+                print(f"{Fore.CYAN}Note: The default server (ntfy.sh) may have rate limits. For high-volume use, consider another option.{Style.RESET_ALL}")
+                break
+            elif server_choice == "2":
+                ntfy_server = ENCHAT_NTFY_SERVER
+                break
+            elif server_choice == "3":
+                custom_server = input(f"{Fore.YELLOW}Enter custom ntfy server URL: {Style.RESET_ALL}").strip()
+                if custom_server:
+                    ntfy_server = custom_server.rstrip('/')
+                    break
+                print(f"{Fore.RED}Please enter a valid server URL.{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}Please enter a number between 1 and 3.{Style.RESET_ALL}")
+    elif args.server:
         ntfy_server = args.server.rstrip('/')
+    elif args.enchat_server:
+        ntfy_server = ENCHAT_NTFY_SERVER
+    elif args.default_server:
+        ntfy_server = DEFAULT_NTFY_SERVER
     
     # Save configuration
     yn = input(f"{Fore.YELLOW}💾 Save settings for auto-reconnect? [Y/n]: {Style.RESET_ALL}").strip() or "Y"
@@ -386,6 +412,10 @@ def main():
                         help="Clear saved settings and start fresh")
     parser.add_argument("--server", type=str,
                         help="Use custom ntfy server (e.g., https://your-ntfy.example.com)")
+    parser.add_argument("--enchat-server", action="store_true",
+                        help=f"Use the enchat ntfy server ({ENCHAT_NTFY_SERVER})")
+    parser.add_argument("--default-server", action="store_true",
+                        help=f"Use the default ntfy server ({DEFAULT_NTFY_SERVER})")
     args = parser.parse_args()
 
     if args.reset and os.path.exists(CONF_FILE):
@@ -398,6 +428,10 @@ def main():
     # Override with command line server if provided
     if args.server:
         ntfy_server = args.server.rstrip('/')
+    elif args.enchat_server:
+        ntfy_server = ENCHAT_NTFY_SERVER
+    elif args.default_server:
+        ntfy_server = DEFAULT_NTFY_SERVER
     
     # Initial setup if no configuration exists
     if not all([room, nick, secret]):
@@ -485,7 +519,26 @@ def main():
             print(f"  {Fore.GREEN}/clear{Style.RESET_ALL} - Clear the screen") 
             print(f"  {Fore.GREEN}/help{Style.RESET_ALL}  - Show this help")
             print(f"  {Fore.GREEN}/who{Style.RESET_ALL}   - Show active room participants")
+            print(f"  {Fore.GREEN}/server{Style.RESET_ALL} - Show current server information")
             print(f"  {Fore.GREEN}/ratelimit{Style.RESET_ALL} - Show information about rate limiting\n")
+            continue
+        elif msg == "/server":
+            print("\033[1A\033[2K", end="")  # Move up one line and clear it
+            print(f"\n{Fore.CYAN}🌐 Server Information:{Style.RESET_ALL}")
+            print(f"  • Current server: {ntfy_server}")
+            if ntfy_server == DEFAULT_NTFY_SERVER:
+                print(f"  • Type: Default public ntfy.sh server")
+                print(f"  • Note: May have stricter rate limits")
+            elif ntfy_server == ENCHAT_NTFY_SERVER:
+                print(f"  • Type: Dedicated Enchat server")
+                print(f"  • Note: More generous rate limits for chat")
+            else:
+                print(f"  • Type: Custom server")
+            print(f"  • To change servers, restart enchat with one of these options:")
+            print(f"    - Use default: --default-server")
+            print(f"    - Use enchat: --enchat-server") 
+            print(f"    - Use custom: --server URL")
+            print()
             continue
         elif msg == "/ratelimit":
             print("\033[1A\033[2K", end="")  # Move up one line and clear it
@@ -495,7 +548,8 @@ def main():
             print(f"  • Tips to avoid rate limits:")
             print(f"    - Wait a few seconds between messages")
             print(f"    - Use a unique room name that others are unlikely to use")
-            print(f"    - Consider running your own ntfy server for high-volume use")
+            print(f"    - Consider using the enchat server (restart with --enchat-server)")
+            print(f"    - Or run your own ntfy server for high-volume use")
             print(f"      See: https://docs.ntfy.sh/install/")
             print()
             continue

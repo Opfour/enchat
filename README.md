@@ -47,33 +47,48 @@ The ntfy server acts as a **message relay only** - it cannot decrypt your messag
 
 ### Installation
 
-#### Automatic Installer (Recommended)
+#### Linux/macOS Installation (Recommended)
 
-**Windows:**
-```powershell
-# Download and run installer
-Invoke-WebRequest -Uri "https://raw.githubusercontent.com/sudosallie/enchat/main/install-enchat.ps1" -OutFile "install-enchat.ps1"
-powershell -ExecutionPolicy Bypass -File install-enchat.ps1
-```
-
-**Linux/macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/sudosallie/enchat/main/install-enchat.sh | bash
-```
-
-Both installers provide:
-- ✅ **Automatic dependency management** (Python, pip packages)
-- ✅ **System launcher** (`enchat` command globally available)
-- ✅ **Secure wipe functionality** (`enchat wipe` removes all traces)
-- ✅ **Cross-platform compatibility** (identical features on all systems)
-- ✅ **Desktop notifications** (Windows 10+ toast, Linux notify-send, macOS osascript)
-
-#### Manual Setup
-```bash
+# Clone the repository
 git clone https://github.com/sudosallie/enchat.git
 cd enchat
+
+# Run the installer (inspect install-enchat.sh first if you want)
+./install-enchat.sh
+```
+
+The installer provides:
+- ✅ **Automatic dependency management** (Python, pip packages)
+- ✅ **Global `enchat` command** (works from anywhere)
+- ✅ **Secure wipe functionality** (`enchat wipe` removes all traces)
+- ✅ **Desktop notifications** (Linux notify-send, macOS osascript)
+
+#### Manual Installation (All Platforms)
+
+```bash
+# Clone or download
+git clone https://github.com/sudosallie/enchat.git
+cd enchat
+
+# Install dependencies
 pip install requests colorama cryptography
-chmod +x enchat.py  # Linux/macOS only
+
+# Make executable (Linux/macOS only)
+chmod +x enchat.py
+
+# Run enchat
+python enchat.py
+```
+
+#### Windows Users
+
+If you don't have `git`, download the repository as a ZIP file from GitHub, extract it, then:
+
+```powershell
+cd enchat
+pip install requests colorama cryptography
+python enchat.py
 ```
 
 ### First Run

@@ -185,29 +185,29 @@ $BatchContent = @"
 setlocal
 
 if "%1"=="wipe" (
-    powershell -ExecutionPolicy Bypass -File "$LauncherPs1Path" wipe
+    powershell -ExecutionPolicy Bypass -File "{0}" wipe
     goto :eof
 )
 
 if "%1"=="help" (
-    powershell -ExecutionPolicy Bypass -File "$LauncherPs1Path" help
+    powershell -ExecutionPolicy Bypass -File "{0}" help
     goto :eof
 )
 
-cd /d "$EnchatDir"
-"@
+cd /d "{1}"
+"@ -f $LauncherPs1Path, $EnchatDir
 
 if ($UseVenv) {
     $BatchContent += @"
 
-call "$VenvDir\Scripts\activate.bat"
+call "{0}\Scripts\activate.bat"
 python enchat.py %*
-"@
+"@ -f $VenvDir
 } else {
     $BatchContent += @"
 
-$PythonCmd enchat.py %*
-"@
+{0} enchat.py %*
+"@ -f $PythonCmd
 }
 
 $BatchContent | Out-File -FilePath $LauncherPath -Encoding ASCII

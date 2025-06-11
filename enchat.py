@@ -1106,9 +1106,7 @@ def main():
             print(f"{Fore.BLUE}📤 Sending...{Style.RESET_ALL}", end="", flush=True)
             success = send_msg(room, msg, nick, fernet, ntfy_server)
             print(f"\r{' ' * 15}\r", end="")  # Clear sending message
-            if success:
-                print(f"{Fore.GREEN}✓ Sent{Style.RESET_ALL}")
-            else:
+            if not success:
                 print(f"{Fore.RED}✗ Failed to send{Style.RESET_ALL}")
 
 if __name__ == "__main__":

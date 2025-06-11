@@ -11,6 +11,8 @@ import requests
 from getpass import getpass
 from colorama import init, Fore, Style, Back
 from cryptography.fernet import Fernet, InvalidToken
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from shutil import which
 import subprocess
 from datetime import datetime
@@ -132,8 +134,20 @@ last_ping_time = 0
 PING_INTERVAL = 30  # Send a ping every 30 seconds
 
 def gen_key(secret: str) -> bytes:
-    h = hashlib.sha256(secret.encode()).digest()
-    return base64.urlsafe_b64encode(h)
+    """Generate encryption key using PBKDF2 for better security"""
+    # Use a static salt that's derived from the app name
+    # This ensures the same password always generates the same key
+    # while still being more secure than plain SHA256
+    salt = hashlib.sha256(b"enchat_v2_static_salt").digest()[:16]
+    
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,  # 256 bits for Fernet
+        salt=salt,
+        iterations=100000,  # 100k iterations - good balance of security vs speed
+    )
+    key = kdf.derive(secret.encode())
+    return base64.urlsafe_b64encode(key)
 
 def save_conf(room: str, nick: str, secret: str, ntfy_server: str = DEFAULT_NTFY_SERVER):
     with open(CONF_FILE, "w") as f:
@@ -177,6 +191,41 @@ def notify(msg: str):
             )
         except Exception:
             pass
+    # Windows: use Windows 10+ toast notifications via PowerShell
+    elif sys.platform == "win32":
+        try:
+            # Use Windows 10+ toast notifications (non-blocking)
+            toast_script = f'''
+[Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+[Windows.UI.Notifications.ToastNotification, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+[Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+
+$template = @"
+<toast>
+    <visual>
+        <binding template="ToastGeneric">
+            <text>Enchat</text>
+            <text>{msg.replace('"', '&quot;')}</text>
+        </binding>
+    </visual>
+</toast>
+"@
+
+$xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+$xml.LoadXml($template)
+$toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("Enchat").Show($toast)
+'''
+            subprocess.run([
+                "powershell", "-WindowStyle", "Hidden", "-Command", toast_script
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        except Exception:
+            # Fallback to console beep on Windows
+            try:
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONASTERISK)
+            except:
+                pass
 
 def encrypt_msg(msg: str, fernet: Fernet) -> str:
     return fernet.encrypt(msg.encode()).decode()
@@ -508,7 +557,11 @@ def main():
         if msg == "/exit":
             on_exit(None, None)
         elif msg == "/clear":
-            os.system("clear")
+            # Cross-platform screen clearing
+            if sys.platform == "win32":
+                os.system("cls")
+            else:
+                os.system("clear")
             ui.print_header()
             ui.print_status_bar(room, nick, ntfy_server)
             print()

@@ -18,7 +18,7 @@
 - **Client-side encryption** - messages are encrypted before leaving your device
 - **Server blindness** - ntfy servers only see encrypted blobs, never plaintext
 - **Authenticated encryption** - prevents message tampering and ensures integrity
-- **Key derivation** - SHA-256 hash of your passphrase generates encryption keys
+- **Strong key derivation** - PBKDF2 with 100,000 iterations protects against brute force attacks
 
 ### **Message Flow Security**
 ```
@@ -48,18 +48,32 @@ The ntfy server acts as a **message relay only** - it cannot decrypt your messag
 ### Installation
 
 #### Automatic Installer (Recommended)
-```bash
-git clone https://github.com/sudodevdante/enchat.git
-cd enchat
-./install-enchat.sh
+
+**Windows:**
+```powershell
+# Download and run installer
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/sudosallie/enchat/main/install-enchat.ps1" -OutFile "install-enchat.ps1"
+powershell -ExecutionPolicy Bypass -File install-enchat.ps1
 ```
+
+**Linux/macOS:**
+```bash
+curl -fsSL https://raw.githubusercontent.com/sudosallie/enchat/main/install-enchat.sh | bash
+```
+
+Both installers provide:
+- ✅ **Automatic dependency management** (Python, pip packages)
+- ✅ **System launcher** (`enchat` command globally available)
+- ✅ **Secure wipe functionality** (`enchat wipe` removes all traces)
+- ✅ **Cross-platform compatibility** (identical features on all systems)
+- ✅ **Desktop notifications** (Windows 10+ toast, Linux notify-send, macOS osascript)
 
 #### Manual Setup
 ```bash
-git clone https://github.com/sudodevdante/enchat.git
+git clone https://github.com/sudosallie/enchat.git
 cd enchat
 pip install requests colorama cryptography
-chmod +x enchat.py
+chmod +x enchat.py  # Linux/macOS only
 ```
 
 ### First Run
@@ -216,7 +230,7 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 
 - **Python 3.6+**
 - **Dependencies:** `requests`, `colorama`, `cryptography`
-- **Platforms:** Linux, macOS, Windows (with Unicode terminal support)
+- **Platforms:** Linux, macOS, Windows (full feature parity across all platforms)
 
 ## 🐛 Troubleshooting
 
@@ -237,6 +251,13 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 **Display Issues:**
 - Ensure terminal supports Unicode characters
 - Update terminal emulator for proper color support
+- **Windows:** Use Windows Terminal or PowerShell for best experience
+
+**Windows-Specific:**
+- Run installer with: `powershell -ExecutionPolicy Bypass -File install-enchat.ps1`
+- Toast notifications require Windows 10 or later
+- Use Windows Terminal for optimal Unicode/color support
+- PowerShell history cleaning happens automatically with `enchat wipe`
 
 ## 📄 License
 

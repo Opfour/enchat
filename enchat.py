@@ -438,20 +438,35 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
             if connection_attempts > 0:
                 ui.print_connection_status("reconnecting", f"Attempt #{connection_attempts}")
             
-            with requests.get(url, stream=True, timeout=70) as resp:
+            # Add headers to ensure proper streaming behavior across platforms
+            headers = {
+                'Cache-Control': 'no-cache',
+                'Accept': 'text/plain',
+                'Connection': 'keep-alive'
+            }
+            
+            with requests.get(url, stream=True, timeout=70, headers=headers) as resp:
                 if connection_attempts > 0:
                     ui.print_connection_status("connected", "Reconnected successfully")
                 connection_attempts = 0
                 
-                for line in resp.iter_lines():
+                # Process lines with explicit buffering control
+                for line in resp.iter_lines(decode_unicode=True, delimiter='\n'):
                     if stop_event.is_set(): break
-                    if not line: continue
-                    line = line.decode()
+                    if not line or line.strip() == "": continue
+                    
+                    line = line.strip()
                     h = hashlib.sha256(line.encode()).hexdigest()
                     if h in seen: continue
                     seen.add(h)
                     if len(seen) > 500:
                         seen = set(list(seen)[-250:])
+                    
+                    # Debug: Log raw received data (remove this after fixing)
+                    if line and not line.startswith(("MSG:", "SYS:", "[SYSTEM]", "[")):
+                        # Unexpected format - log for debugging
+                        ui.print_system_message(f"Debug: Unknown format: {line[:50]}...", "error")
+                        continue
                     
                     # Handle new encrypted format
                     if line.startswith("SYS:") or line.startswith("MSG:"):
@@ -461,16 +476,21 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
                         # Try to decrypt the payload
                         plain_payload = decrypt_msg(encrypted_data, fernet)
                         if plain_payload is None:
-                            # Invalid encryption - skip this message
+                            # Invalid encryption - might be wrong key
+                            ui.print_system_message(f"Debug: Failed to decrypt {msg_type} message", "error")
                             continue
                             
                         try:
                             # Parse the decrypted payload: timestamp|nick|content
                             parts = plain_payload.split("|", 2)
                             if len(parts) != 3:
+                                ui.print_system_message(f"Debug: Malformed payload: {len(parts)} parts", "error")
                                 continue
                                 
                             msg_timestamp, sender, content = parts
+                            
+                            # Debug: Log successful decryption
+                            ui.print_system_message(f"Debug: {msg_type} from {sender}: {content[:30]}...", "info")
                             
                             # Add sender to participants list
                             if sender != nick:
@@ -509,13 +529,16 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
                                     ui.print_user_message(sender, content, is_own=False)
                                     notify(f"New message from {sender}")  # Privacy: no message content in notifications
                                     
-                        except (ValueError, IndexError):
+                        except (ValueError, IndexError) as e:
                             # Malformed payload - skip
+                            ui.print_system_message(f"Debug: Parse error: {str(e)}", "error")
                             continue
                             
                     # Legacy format support (for backwards compatibility)
                     elif line.startswith("[SYSTEM][") or (line.startswith("[") and "] " in line):
                         # Handle old plaintext format for backwards compatibility
+                        ui.print_system_message("Debug: Received legacy format message", "info")
+                        
                         if line.startswith("[SYSTEM]["):
                             who = line.split("]")[1][1:]
                             what = line.split("] ")[-1]
@@ -876,6 +899,8 @@ def main():
             print(f"  {Fore.GREEN + Style.BRIGHT}/stats{Style.RESET_ALL}   Session statistics")
             print(f"  {Fore.GREEN + Style.BRIGHT}/security{Style.RESET_ALL} Security & privacy info")
             print(f"  {Fore.GREEN + Style.BRIGHT}/server{Style.RESET_ALL}  Server information")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/debug{Style.RESET_ALL}   Show debug information")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/ping{Style.RESET_ALL}    Send a ping to test connectivity")
             print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
             print()
             continue
@@ -902,6 +927,39 @@ def main():
             print(f"     • All data encrypted before network transmission")
             print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
             print()
+            continue
+        elif msg == "/debug":
+            print("\033[1A\033[2K", end="")  # Move up one line and clear it
+            print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}🔧  DEBUG INFORMATION{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"  {Fore.YELLOW}Platform{Style.RESET_ALL}         {sys.platform}")
+            print(f"  {Fore.YELLOW}Python Version{Style.RESET_ALL}   {sys.version.split()[0]}")
+            print(f"  {Fore.YELLOW}Room Participants{Style.RESET_ALL} {list(room_participants)}")
+            print(f"  {Fore.YELLOW}Server URL{Style.RESET_ALL}       {ntfy_server}")
+            print(f"  {Fore.YELLOW}Listen URL{Style.RESET_ALL}       {ntfy_server}/{room}/raw")
+            print(f"  {Fore.YELLOW}Terminal Size{Style.RESET_ALL}    {ui.terminal_width}x24")
+            
+            # Test connection to server
+            try:
+                import requests
+                test_resp = requests.get(f"{ntfy_server}", timeout=5)
+                print(f"  {Fore.YELLOW}Server Status{Style.RESET_ALL}    HTTP {test_resp.status_code} (OK)")
+            except Exception as e:
+                print(f"  {Fore.YELLOW}Server Status{Style.RESET_ALL}    Error: {str(e)[:30]}...")
+                
+            print(f"  {Fore.YELLOW}Message Count{Style.RESET_ALL}    {ui.message_count} received")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print()
+            continue
+        elif msg == "/ping":
+            print("\033[1A\033[2K", end="")  # Move up one line and clear it
+            ui.print_system_message("Sending manual ping...", "info")
+            success = send_system(room, nick, "ping", ntfy_server, fernet)
+            if success:
+                ui.print_system_message("Ping sent successfully!", "info")
+            else:
+                ui.print_system_message("Failed to send ping", "error")
             continue
         elif msg == "/server":
             print("\033[1A\033[2K", end="")  # Move up one line and clear it

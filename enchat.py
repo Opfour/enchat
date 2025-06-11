@@ -17,6 +17,13 @@ from shutil import which
 import subprocess
 from datetime import datetime
 
+# Try to import keyring for secure passphrase storage
+try:
+    import keyring
+    KEYRING_AVAILABLE = True
+except ImportError:
+    KEYRING_AVAILABLE = False
+
 init(autoreset=True)
 CONF_FILE = os.path.expanduser("~/.enchat.conf")
 DEFAULT_NTFY_SERVER = "https://ntfy.sh"
@@ -149,6 +156,25 @@ def gen_key(secret: str) -> bytes:
     key = kdf.derive(secret.encode())
     return base64.urlsafe_b64encode(key)
 
+def save_passphrase_keychain(room: str, secret: str) -> bool:
+    """Save passphrase securely in system keychain"""
+    if not KEYRING_AVAILABLE:
+        return False
+    try:
+        keyring.set_password("enchat", f"room_{room}", secret)
+        return True
+    except Exception:
+        return False
+
+def load_passphrase_keychain(room: str) -> str:
+    """Load passphrase from system keychain"""
+    if not KEYRING_AVAILABLE:
+        return ""
+    try:
+        return keyring.get_password("enchat", f"room_{room}") or ""
+    except Exception:
+        return ""
+
 def save_conf(room: str, nick: str, secret: str, ntfy_server: str = DEFAULT_NTFY_SERVER):
     with open(CONF_FILE, "w") as f:
         f.write(f"{room}\n{nick}\n{secret}\n{ntfy_server}\n")
@@ -162,6 +188,11 @@ def load_conf():
                 nick = lines[1] 
                 secret = lines[2]
                 ntfy_server = lines[3] if len(lines) >= 4 else DEFAULT_NTFY_SERVER
+                
+                # If no secret in config, try keychain
+                if not secret and room:
+                    secret = load_passphrase_keychain(room)
+                
                 return room, nick, secret, ntfy_server
     except Exception:
         pass
@@ -309,7 +340,7 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
                         is_own_message = (sender == nick)
                         if not is_own_message:  # Only show messages from others
                             ui.print_user_message(sender, plain, is_own=False)
-                            notify(f"{sender}: {plain}")
+                            notify(f"New message from {sender}")  # Privacy: no message content in notifications
                     else:
                         if data.startswith(("U2FsdGVk","gAAAA")):
                             ui.print_user_message(sender, "[🔒 Encrypted message - wrong passphrase]")
@@ -447,11 +478,44 @@ def setup_initial_config(args):
     elif args.default_server:
         ntfy_server = DEFAULT_NTFY_SERVER
     
-    # Save configuration
-    yn = input(f"{Fore.YELLOW}💾 Save settings for auto-reconnect? [Y/n]: {Style.RESET_ALL}").strip() or "Y"
-    if yn.lower().startswith("y"):
-        save_conf(room, nick, secret, ntfy_server)
-        print(f"{Fore.GREEN}✅ Settings saved to {CONF_FILE}{Style.RESET_ALL}")
+    # Simple passphrase storage options
+    save_settings = input(f"{Fore.YELLOW}💾 Save settings for quick reconnect? [Y/n]: {Style.RESET_ALL}").strip() or "Y"
+    if save_settings.lower().startswith("y"):
+        print(f"{Fore.CYAN}🔐 How should we save your passphrase?{Style.RESET_ALL}")
+        
+        if KEYRING_AVAILABLE:
+            print(f"  {Fore.GREEN}1) Secure (system keychain) - Recommended{Style.RESET_ALL}")
+            print(f"  {Fore.YELLOW}2) File (less secure){Style.RESET_ALL}")
+            print(f"  {Fore.CYAN}3) Don't save (ask each time){Style.RESET_ALL}")
+            
+            choice = input(f"{Fore.YELLOW}Choose [1-3]: {Style.RESET_ALL}").strip() or "1"
+            
+            if choice == "1":
+                if save_passphrase_keychain(room, secret):
+                    save_conf(room, nick, "", ntfy_server)
+                    print(f"{Fore.GREEN}✅ Saved securely! You won't need to re-enter your passphrase.{Style.RESET_ALL}")
+                else:
+                    save_conf(room, nick, "", ntfy_server)
+                    print(f"{Fore.YELLOW}⚠️  Keychain failed. You'll be asked for your passphrase each time.{Style.RESET_ALL}")
+            elif choice == "2":
+                save_conf(room, nick, secret, ntfy_server)
+                print(f"{Fore.GREEN}✅ Saved to file. {Fore.YELLOW}Warning: passphrase stored in plaintext.{Style.RESET_ALL}")
+            else:
+                save_conf(room, nick, "", ntfy_server)
+                print(f"{Fore.GREEN}✅ Settings saved. You'll be asked for your passphrase each time.{Style.RESET_ALL}")
+        else:
+            print(f"  {Fore.YELLOW}1) File (passphrase saved in plaintext){Style.RESET_ALL}")
+            print(f"  {Fore.CYAN}2) Don't save (ask each time) - More secure{Style.RESET_ALL}")
+            print(f"  {Fore.BLUE}💡 Install 'keyring' for secure storage: pip install keyring{Style.RESET_ALL}")
+            
+            choice = input(f"{Fore.YELLOW}Choose [1-2] (default: 2): {Style.RESET_ALL}").strip() or "2"
+            
+            if choice == "1":
+                save_conf(room, nick, secret, ntfy_server)
+                print(f"{Fore.GREEN}✅ Saved to file. {Fore.YELLOW}Warning: passphrase stored in plaintext.{Style.RESET_ALL}")
+            else:
+                save_conf(room, nick, "", ntfy_server)
+                print(f"{Fore.GREEN}✅ Settings saved. You'll be asked for your passphrase each time.{Style.RESET_ALL}")
     
     return room, nick, secret, ntfy_server
 
@@ -482,9 +546,21 @@ def main():
     elif args.default_server:
         ntfy_server = DEFAULT_NTFY_SERVER
     
-    # Initial setup if no configuration exists
-    if not all([room, nick, secret]):
-        room, nick, secret, ntfy_server = setup_initial_config(args)
+    # Initial setup if no configuration exists or passphrase missing
+    if not all([room, nick]) or not secret:
+        if room and nick and not secret:
+            # Config exists but no passphrase - prompt for it
+            os.system("clear")
+            ui.print_header()
+            print(f"{Fore.GREEN}✨ Welcome back, {Style.BRIGHT}{nick}{Style.RESET_ALL}{Fore.GREEN}!{Style.RESET_ALL}")
+            print(f"{Fore.CYAN}🔐 Please enter your passphrase for room '{room}'{Style.RESET_ALL}")
+            while True:
+                secret = getpass(f"{Fore.YELLOW}🔐 Encryption passphrase (hidden): {Style.RESET_ALL}").strip()
+                if secret and len(secret) >= 6:
+                    break
+                print(f"{Fore.RED}Please enter a passphrase with at least 6 characters.{Style.RESET_ALL}")
+        else:
+            room, nick, secret, ntfy_server = setup_initial_config(args)
     else:
         # Normalize room name from saved config to ensure consistency
         room = room.lower().strip()

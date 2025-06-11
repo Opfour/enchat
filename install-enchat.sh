@@ -56,9 +56,9 @@ if $USE_VENV; then
   if [[ "$(uname)" == "Darwin" ]] && python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" | grep -q "LibreSSL"; then
     echo "🍎 macOS with LibreSSL detected - installing compatible dependencies"
     pip install urllib3==1.26.16  # Install compatible urllib3 version first
-    pip install requests colorama cryptography
+    pip install requests colorama cryptography keyring
   else
-    pip install requests colorama cryptography
+    pip install requests colorama cryptography keyring
   fi
 else
   echo "⚠️  Virtualenv not available – installing dependencies to user site"
@@ -67,9 +67,9 @@ else
   if [[ "$(uname)" == "Darwin" ]] && python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" | grep -q "LibreSSL"; then
     echo "🍎 macOS with LibreSSL detected - installing compatible dependencies"
     pip3 install --user urllib3==1.26.16  # Install compatible urllib3 version first
-    pip3 install --user requests colorama cryptography
+    pip3 install --user requests colorama cryptography keyring
   else
-    pip3 install --user requests colorama cryptography
+    pip3 install --user requests colorama cryptography keyring
   fi
 fi
 

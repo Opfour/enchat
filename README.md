@@ -71,8 +71,8 @@ The installer provides:
 git clone https://github.com/sudosallie/enchat.git
 cd enchat
 
-# Install dependencies
-pip install requests colorama cryptography
+# Install dependencies (keyring is optional but recommended)
+pip install requests colorama cryptography keyring
 
 # Make executable (Linux/macOS only)
 chmod +x enchat.py
@@ -87,7 +87,7 @@ If you don't have `git`, download the repository as a ZIP file from GitHub, extr
 
 ```powershell
 cd enchat
-pip install requests colorama cryptography
+pip install requests colorama cryptography keyring
 python enchat.py
 ```
 
@@ -245,6 +245,7 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 
 - **Python 3.6+**
 - **Dependencies:** `requests`, `colorama`, `cryptography`
+- **Optional:** `keyring` (for secure passphrase storage in system keychain)
 - **Platforms:** Linux, macOS, Windows (full feature parity across all platforms)
 
 ## 🐛 Troubleshooting

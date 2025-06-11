@@ -261,7 +261,7 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 
 **Rate Limiting Issues:**
 - If you see HTTP 429 errors, the server is rate limiting your requests
-- Use the `/ratelimit` command to see tips on avoiding rate limits
+- Rate limiting is automatically handled with smart retry logic
 - Consider switching to the enchat server with `--enchat-server`
 - For high-volume use, set up your own ntfy server
 

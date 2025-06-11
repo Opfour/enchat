@@ -670,24 +670,24 @@ def setup_initial_config(args):
         print(f"{Fore.RED}Please enter a passphrase with at least 6 characters.{Style.RESET_ALL}")
     
     # Server configuration
-    ntfy_server = DEFAULT_NTFY_SERVER
+    ntfy_server = ENCHAT_NTFY_SERVER  # Default to enchat server
     if not (args.server or args.enchat_server or args.default_server):
         print(f"{Fore.CYAN}🌐 Select a ntfy server:{Style.RESET_ALL}")
-        print(f"  {Fore.YELLOW}1){Style.RESET_ALL} Default ntfy server ({DEFAULT_NTFY_SERVER})")
+        print(f"  {Fore.YELLOW}1){Style.RESET_ALL} Enchat ntfy server ({ENCHAT_NTFY_SERVER}) - Recommended")
+        print(f"     - Dedicated server for enchat with generous limits")
+        print(f"  {Fore.YELLOW}2){Style.RESET_ALL} Default ntfy server ({DEFAULT_NTFY_SERVER})")
         print(f"     - Public server with rate limits")
-        print(f"  {Fore.YELLOW}2){Style.RESET_ALL} Enchat ntfy server ({ENCHAT_NTFY_SERVER})")
-        print(f"     - Dedicated server for enchat with more generous limits")
         print(f"  {Fore.YELLOW}3){Style.RESET_ALL} Custom server")
         print(f"     - Your own or another ntfy server")
         
         while True:
             server_choice = input(f"{Fore.YELLOW}Enter choice [1-3] (default: 1): {Style.RESET_ALL}").strip() or "1"
             if server_choice == "1":
-                ntfy_server = DEFAULT_NTFY_SERVER
-                print(f"{Fore.CYAN}Note: The default server (ntfy.sh) may have rate limits. For high-volume use, consider another option.{Style.RESET_ALL}")
+                ntfy_server = ENCHAT_NTFY_SERVER
                 break
             elif server_choice == "2":
-                ntfy_server = ENCHAT_NTFY_SERVER
+                ntfy_server = DEFAULT_NTFY_SERVER
+                print(f"{Fore.CYAN}Note: The default server (ntfy.sh) may have rate limits. For high-volume use, consider option 1.{Style.RESET_ALL}")
                 break
             elif server_choice == "3":
                 custom_server = input(f"{Fore.YELLOW}Enter custom ntfy server URL: {Style.RESET_ALL}").strip()

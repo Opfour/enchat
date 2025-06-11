@@ -114,13 +114,13 @@ Welcome to Enchat! Let's set up your encrypted chat.
 🔐 Encryption passphrase (hidden): ••••••••
 
 🌐 Select a ntfy server:
-  1) Default ntfy server (https://ntfy.sh)
+  1) Enchat ntfy server (https://enchat.sudosallie.com) - Recommended
+     - Dedicated server for enchat with generous limits
+  2) Default ntfy server (https://ntfy.sh)
      - Public server with rate limits
-  2) Enchat ntfy server (https://enchat.sudosallie.com)
-     - Dedicated server for enchat with more generous limits
   3) Custom server
      - Your own or another ntfy server
-Enter choice [1-3] (default: 1): 2
+Enter choice [1-3] (default: 1): 1
 
 💾 Save settings for auto-reconnect? [Y/n]: y
 ```
@@ -160,13 +160,13 @@ enchat wipe                                      # Securely remove all traces
 
 Enchat supports multiple ntfy servers:
 
-1. **Default Server** (ntfy.sh)
+1. **Dedicated Enchat Server** (enchat.sudosallie.com) - **Default & Recommended**
+   - Optimized for chat with generous rate limits
+   - Best performance and reliability for enchat
+
+2. **Default Server** (ntfy.sh)
    - Public server with rate limits
    - Good for occasional use
-
-2. **Dedicated Enchat Server** (enchat.sudosallie.com)
-   - Optimized for chat with generous rate limits
-   - Recommended for regular use
 
 3. **Self-Hosted Server**
    - Complete control over infrastructure

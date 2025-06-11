@@ -99,25 +99,45 @@ class ChatUI:
             return f"{seconds}s"
     
     def print_modern_header(self, room, nick, ntfy_server):
-        """Clean, minimal header design"""
+        """Enhanced modern header with better visual hierarchy"""
         
-        # Simple, clean header
-        print(f"\n{Fore.CYAN + Style.BRIGHT}🔐 ENCHAT{Style.RESET_ALL} {Fore.CYAN}• Encrypted Under The Radar Chat{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}")
+        # Calculate dynamic width
+        header_width = min(self.terminal_width, 100)
         
-        # Status line with minimal design  
+        # Brand section with enhanced styling
+        brand_line = f"🔐 ENCHAT"
+        tagline = "Encrypted Under The Radar Chat"
+        
+        # Center the brand
+        brand_padding = (header_width - len(brand_line) - len(tagline) - 3) // 2
+        
+        print(f"\n{Back.BLACK}{Fore.CYAN}{'═' * header_width}{Style.RESET_ALL}")
+        print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}{' ' * brand_padding}{Fore.CYAN + Style.BRIGHT}{brand_line}{Style.RESET_ALL} {Fore.CYAN}• {tagline}{Style.RESET_ALL}{' ' * (header_width - len(brand_line) - len(tagline) - brand_padding - 4)}{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+        print(f"{Back.BLACK}{Fore.CYAN}{'╠' + '═' * (header_width - 2) + '╣'}{Style.RESET_ALL}")
+        
+        # Status line with enhanced design
         participants_count = len(room_participants)
         
-        # Clean status indicators
+        # Status indicators with better styling
         if self.status == "🟢":
-            status_text = f"{Fore.GREEN}● Online{Style.RESET_ALL}"
+            status_text = f"{Fore.GREEN + Style.BRIGHT}● ONLINE{Style.RESET_ALL}"
         elif self.status == "🟡":
-            status_text = f"{Fore.YELLOW}● Connecting{Style.RESET_ALL}"
+            status_text = f"{Fore.YELLOW + Style.BRIGHT}● CONNECTING{Style.RESET_ALL}"
         else:
-            status_text = f"{Fore.RED}● Offline{Style.RESET_ALL}"
+            status_text = f"{Fore.RED + Style.BRIGHT}● OFFLINE{Style.RESET_ALL}"
         
-        print(f"{Fore.GREEN}🏠 {room}{Style.RESET_ALL}  •  {Fore.BLUE}👤 {nick}{Style.RESET_ALL}  •  {status_text}  •  {Fore.RED}🔒 Encrypted{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}\n")
+        # Build status components
+        room_info = f"{Fore.GREEN + Style.BRIGHT}🏠 {room.upper()}{Style.RESET_ALL}"
+        user_info = f"{Fore.BLUE + Style.BRIGHT}👤 {nick}{Style.RESET_ALL}"
+        security_info = f"{Fore.RED + Style.BRIGHT}🔒 AES-256{Style.RESET_ALL}"
+        
+        # Status line with proper spacing
+        status_content = f"║ {room_info}  •  {user_info}  •  {status_text}  •  {security_info}"
+        status_padding = header_width - len(status_content.replace(Fore.GREEN + Style.BRIGHT, '').replace(Fore.BLUE + Style.BRIGHT, '').replace(Fore.RED + Style.BRIGHT, '').replace(Fore.YELLOW + Style.BRIGHT, '').replace(Style.RESET_ALL, '')) - 1
+        
+        print(f"{Back.BLACK}{Fore.CYAN}{status_content}{' ' * max(0, status_padding)}║{Style.RESET_ALL}")
+        print(f"{Back.BLACK}{Fore.CYAN}{'╚' + '═' * (header_width - 2) + '╝'}{Style.RESET_ALL}")
+        print()
     
     def print_enhanced_header(self, room, nick, ntfy_server):
         """Legacy enhanced header - calls modern version"""
@@ -150,23 +170,34 @@ class ChatUI:
     def print_system_message(self, msg, msg_type="info"):
         timestamp = self.get_timestamp()
         
+        # Enhanced system message styling
         if msg_type == "join":
-            icon = "→"
-            color = Fore.GREEN
+            icon = "🎉"
+            color = Fore.GREEN + Style.BRIGHT
+            bg_color = Back.GREEN
+            text_color = Fore.BLACK
         elif msg_type == "leave": 
-            icon = "←"
-            color = Fore.RED
+            icon = "👋"
+            color = Fore.RED + Style.BRIGHT
+            bg_color = Back.RED
+            text_color = Fore.WHITE
         elif msg_type == "error":
-            icon = "⚠"
-            color = Fore.YELLOW
+            icon = "⚠️"
+            color = Fore.YELLOW + Style.BRIGHT
+            bg_color = Back.YELLOW
+            text_color = Fore.BLACK
         else:
-            icon = "ℹ"
-            color = Fore.CYAN
-            
-        print(f"{Fore.BLACK + Style.BRIGHT}[{timestamp}]{Style.RESET_ALL} {color}{icon} {msg}{Style.RESET_ALL}")
+            icon = "ℹ️"
+            color = Fore.CYAN + Style.BRIGHT
+            bg_color = Back.CYAN
+            text_color = Fore.BLACK
+        
+        # Enhanced system message with better visual design
+        print(f"  {bg_color}{text_color + Style.BRIGHT} {icon} SYSTEM {Style.RESET_ALL} {color}[{timestamp}]{Style.RESET_ALL} {msg}")
+        print()
     
     def print_modern_message(self, user, msg, is_own=False, msg_type="normal"):
-        """Modern, clean message bubbles"""
+        """Enhanced message bubbles with better visual design"""
         timestamp = self.get_timestamp()
         self.message_count += 1
         
@@ -174,37 +205,43 @@ class ChatUI:
         if len(msg) > MAX_MESSAGE_LENGTH:
             msg = msg[:MAX_MESSAGE_LENGTH - 3] + "..."
         
-        # Clean, modern message design
+        # Clean message design without background colors
         if is_own:
-            # Your messages - right aligned, green accent
+            # Your messages - right aligned with clean styling
             user_display = "You"
-            accent_color = Fore.GREEN
-            bg_color = Back.BLACK
-            align_padding = "    "  # Right align
+            accent_color = Fore.GREEN + Style.BRIGHT
+            align_padding = "    "
+            bubble_char = "▶"
         else:
-            # Others' messages - left aligned, user-specific color
+            # Others' messages - left aligned with user-specific styling
             user_display = user
-            accent_color = self.get_user_color(user)
-            bg_color = Back.BLACK
+            accent_color = self.get_user_color(user) + Style.BRIGHT
             align_padding = ""
+            bubble_char = "◀"
         
-        # Special message types
+        # Special message types with clean styling
         if msg_type == "encrypted":
-            accent_color = Fore.RED
+            accent_color = Fore.RED + Style.BRIGHT
             msg = f"🔒 {msg}"
+            bubble_char = "🔐"
         elif msg_type == "system":
-            accent_color = Fore.YELLOW
+            accent_color = Fore.YELLOW + Style.BRIGHT
             user_display = "System"
+            bubble_char = "⚙"
         
-        # Clean header with timestamp
-        header = f"{align_padding}{accent_color + Style.BRIGHT}● {user_display}{Style.RESET_ALL} {Fore.BLACK + Style.BRIGHT}{timestamp}{Style.RESET_ALL}"
+        # Enhanced header with better visual separation
+        if is_own:
+            header = f"{align_padding}{accent_color + Style.BRIGHT}{bubble_char} {user_display}{Style.RESET_ALL} {Fore.BLACK + Style.DIM}[{timestamp}]{Style.RESET_ALL}"
+        else:
+            header = f"{accent_color + Style.BRIGHT}{bubble_char} {user_display}{Style.RESET_ALL} {Fore.BLACK + Style.DIM}[{timestamp}]{Style.RESET_ALL}"
+        
         print(header)
         
-        # Message content with clean indentation
+        # Enhanced message content with better word wrapping
         words = msg.split(' ')
         lines = []
         current_line = ""
-        max_line_length = min(70, self.terminal_width - 10)
+        max_line_length = min(65, self.terminal_width - 12)
         
         for word in words:
             if len(current_line + word) <= max_line_length:
@@ -216,13 +253,14 @@ class ChatUI:
         if current_line:
             lines.append(current_line.rstrip())
         
-        # Print message content with subtle background
+        # Clean message content without background colors
         for i, line in enumerate(lines):
             if is_own:
-                padding = self.terminal_width - len(line) - 6
-                print(f"      {bg_color}{line}{' ' * max(0, padding)}{Style.RESET_ALL}")
+                # Right-aligned messages with clean styling
+                print(f"      {line}")
             else:
-                print(f"  {bg_color}{line}{Style.RESET_ALL}")
+                # Left-aligned messages with clean styling  
+                print(f"  {line}")
         
         print()  # Clean spacing between messages
     
@@ -249,26 +287,33 @@ class ChatUI:
             self.print_system_message(f"Reconnecting... {details}", "info")
     
     def print_modern_input_area(self, current_input=""):
-        """Modern, minimal input area"""
+        """Enhanced input area with better visual design"""
         width = self.terminal_width
         char_count = len(current_input)
         
-        # Clean input separator
-        print(f"{Back.BLACK}{Fore.CYAN}{'─' * width}{Style.RESET_ALL}")
+        # Enhanced input separator with gradient effect
+        print(f"{Back.BLACK}{Fore.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Style.RESET_ALL}")
         
-        # Minimal prompt with character count
-        if char_count > MAX_MESSAGE_LENGTH * 0.8:  # Warning when approaching limit
-            char_color = Fore.YELLOW
-        elif char_count > MAX_MESSAGE_LENGTH * 0.9:
-            char_color = Fore.RED
+        # Enhanced prompt with better visual hierarchy
+        if char_count > MAX_MESSAGE_LENGTH * 0.9:  # Critical warning
+            char_color = Fore.RED + Style.BRIGHT
+            status_icon = "⚠"
+        elif char_count > MAX_MESSAGE_LENGTH * 0.8:  # Warning
+            char_color = Fore.YELLOW + Style.BRIGHT
+            status_icon = "⚡"
         else:
-            char_color = Fore.CYAN
+            char_color = Fore.CYAN + Style.BRIGHT
+            status_icon = "✓"
         
-        char_info = f"{char_color}{char_count}/{MAX_MESSAGE_LENGTH}{Style.RESET_ALL}"
-        prompt_line = f"  💬  {Fore.WHITE}Type your message...{Style.RESET_ALL}  {char_info}"
+        # Enhanced character counter with status
+        char_info = f"{char_color}{status_icon} {char_count}/{MAX_MESSAGE_LENGTH}{Style.RESET_ALL}"
         
-        print(f"{Back.BLACK}{prompt_line}{Style.RESET_ALL}")
-        print(f"{Back.BLACK}{Fore.CYAN}{'─' * width}{Style.RESET_ALL}")
+        # Enhanced prompt line with better spacing
+        prompt_content = f"💬 {Fore.WHITE + Style.BRIGHT}Type your message...{Style.RESET_ALL}"
+        padding = width - len(prompt_content.replace(Fore.WHITE + Style.BRIGHT, '').replace(Style.RESET_ALL, '')) - len(char_info.replace(char_color, '').replace(Style.RESET_ALL, '')) - 6
+        
+        print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {prompt_content}{' ' * max(0, padding)}{char_info} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+        print(f"{Back.BLACK}{Fore.CYAN}{'╚' + '═' * (width - 2) + '╝'}{Style.RESET_ALL}")
     
     def print_enhanced_input_area(self, current_input=""):
         """Legacy input area - calls modern version"""
@@ -881,41 +926,90 @@ def main():
             print()
             continue
         elif msg == "/help":
-            print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
-            print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}📖  AVAILABLE COMMANDS{Style.RESET_ALL}")
-            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
-            print(f"  {Fore.GREEN + Style.BRIGHT}/exit{Style.RESET_ALL}    Leave chat and secure wipe")
-            print(f"  {Fore.GREEN + Style.BRIGHT}/clear{Style.RESET_ALL}   Refresh interface")
-            print(f"  {Fore.GREEN + Style.BRIGHT}/who{Style.RESET_ALL}     Show online users")
-            print(f"  {Fore.GREEN + Style.BRIGHT}/stats{Style.RESET_ALL}   Session statistics")
-            print(f"  {Fore.GREEN + Style.BRIGHT}/security{Style.RESET_ALL} Security & privacy info")
-            print(f"  {Fore.GREEN + Style.BRIGHT}/server{Style.RESET_ALL}  Server information")
+            width = ui.terminal_width
+            print(f"\n{Back.BLACK}{Fore.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {Fore.WHITE + Style.BRIGHT}📖  AVAILABLE COMMANDS{Style.RESET_ALL}{' ' * (width - 22)} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'╠' + '═' * (width - 2) + '╣'}{Style.RESET_ALL}")
+            
+            commands = [
+                ("/exit", "Leave chat and secure wipe", "🚪"),
+                ("/clear", "Refresh interface", "🔄"),
+                ("/who", "Show online users", "👥"),
+                ("/stats", "Session statistics", "📊"),
+                ("/security", "Security & privacy info", "🛡️"),
+                ("/server", "Server information", "🌐")
+            ]
+            
+            for cmd, desc, icon in commands:
+                cmd_text = f"{icon} {Fore.GREEN + Style.BRIGHT}{cmd}{Style.RESET_ALL}"
+                padding = width - len(f"{icon} {cmd}") - len(desc) - 8
+                print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {cmd_text}{' ' * max(0, padding)}{desc} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
 
-            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'╚' + '═' * (width - 2) + '╝'}{Style.RESET_ALL}")
             print()
             continue
         elif msg == "/security":
             print("\033[1A\033[2K", end="")  # Move up one line and clear it
-            print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
-            print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}🛡️  SECURITY & PRIVACY OVERVIEW{Style.RESET_ALL}")
-            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
-            print(f"  {Fore.GREEN + Style.BRIGHT}✅ ENCRYPTED (Hidden from server/network):{Style.RESET_ALL}")
-            print(f"     • Message content")
-            print(f"     • Usernames/nicknames") 
-            print(f"     • Timestamps")
-            print(f"     • Join/leave/ping events")
-            print(f"     • All metadata")
-            print()
-            print(f"  {Fore.YELLOW + Style.BRIGHT}⚠️  VISIBLE (But necessary for routing):{Style.RESET_ALL}")
-            print(f"     • Room name (in URL path)")
-            print(f"     • Message prefixes (MSG:/SYS: - 4 chars only)")
-            print()
-            print(f"  {Fore.CYAN + Style.BRIGHT}🔒 ENCRYPTION DETAILS:{Style.RESET_ALL}")
-            print(f"     • Algorithm: AES-256 in CBC mode + HMAC-SHA256")
-            print(f"     • Key derivation: PBKDF2-SHA256 (100,000 iterations)")
-            print(f"     • Message format: timestamp|username|content")
-            print(f"     • All data encrypted before network transmission")
-            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            width = ui.terminal_width
+            
+            print(f"\n{Back.BLACK}{Fore.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Style.RESET_ALL}")
+            header_text = "🛡️  SECURITY & PRIVACY OVERVIEW"
+            header_padding = width - len(header_text) - 4
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {Fore.WHITE + Style.BRIGHT}{header_text}{Style.RESET_ALL}{' ' * header_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'╠' + '═' * (width - 2) + '╣'}{Style.RESET_ALL}")
+            
+            # Encrypted section
+            encrypted_title = f"{Fore.GREEN + Style.BRIGHT}✅ ENCRYPTED (Hidden from server/network):{Style.RESET_ALL}"
+            title_padding = width - len("✅ ENCRYPTED (Hidden from server/network):") - 4
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {encrypted_title}{' ' * title_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            encrypted_items = [
+                "• Message content",
+                "• Usernames/nicknames",
+                "• Timestamps", 
+                "• Join/leave/ping events",
+                "• All metadata"
+            ]
+            
+            for item in encrypted_items:
+                item_padding = width - len(item) - 7
+                print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}   {item}{' ' * item_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}{' ' * (width - 2)} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            # Visible section
+            visible_title = f"{Fore.YELLOW + Style.BRIGHT}⚠️  VISIBLE (But necessary for routing):{Style.RESET_ALL}"
+            visible_title_padding = width - len("⚠️  VISIBLE (But necessary for routing):") - 4
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {visible_title}{' ' * visible_title_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            visible_items = [
+                "• Room name (in URL path)",
+                "• Message prefixes (MSG:/SYS: - 4 chars only)"
+            ]
+            
+            for item in visible_items:
+                item_padding = width - len(item) - 7
+                print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}   {item}{' ' * item_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}{' ' * (width - 2)} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            # Encryption details
+            details_title = f"{Fore.CYAN + Style.BRIGHT}🔒 ENCRYPTION DETAILS:{Style.RESET_ALL}"
+            details_title_padding = width - len("🔒 ENCRYPTION DETAILS:") - 4
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {details_title}{' ' * details_title_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            details_items = [
+                "• Algorithm: AES-256 in CBC mode + HMAC-SHA256",
+                "• Key derivation: PBKDF2-SHA256 (100,000 iterations)",
+                "• Message format: timestamp|username|content",
+                "• All data encrypted before network transmission"
+            ]
+            
+            for item in details_items:
+                item_padding = width - len(item) - 7
+                print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}   {item}{' ' * item_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            print(f"{Back.BLACK}{Fore.CYAN}{'╚' + '═' * (width - 2) + '╝'}{Style.RESET_ALL}")
             print()
             continue
 
@@ -942,34 +1036,62 @@ def main():
             print("\033[1A\033[2K", end="")  # Move up one line and clear it
             uptime = ui.get_uptime()
             participants_count = len(room_participants)
+            width = ui.terminal_width
             
-            print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
-            print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}📊  SESSION STATISTICS{Style.RESET_ALL}")
-            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
-            print(f"  {Fore.YELLOW}🔒 Encryption{Style.RESET_ALL}      AES-256-CBC + HMAC-SHA256")
-            print(f"  {Fore.YELLOW}🔑 Key Derivation{Style.RESET_ALL}  PBKDF2-SHA256 (100k rounds)")
-            print(f"  {Fore.YELLOW}🛡️  Privacy{Style.RESET_ALL}         Usernames, timestamps & events encrypted")
-            print(f"  {Fore.YELLOW}💬 Messages{Style.RESET_ALL}        {ui.message_count} received")
-            print(f"  {Fore.YELLOW}⏱️  Uptime{Style.RESET_ALL}          {uptime}")
-            print(f"  {Fore.YELLOW}👥 Online{Style.RESET_ALL}          {participants_count} users")
-            print(f"  {Fore.YELLOW}🌐 Server{Style.RESET_ALL}          {ntfy_server.replace('https://', '')}")
-            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"\n{Back.BLACK}{Fore.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {Fore.WHITE + Style.BRIGHT}📊  SESSION STATISTICS{Style.RESET_ALL}{' ' * (width - 22)} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'╠' + '═' * (width - 2) + '╣'}{Style.RESET_ALL}")
+            
+            stats = [
+                ("🔒 Encryption", "AES-256-CBC + HMAC-SHA256"),
+                ("🔑 Key Derivation", "PBKDF2-SHA256 (100k rounds)"),
+                ("🛡️  Privacy", "Usernames, timestamps & events encrypted"),
+                ("💬 Messages", f"{ui.message_count} received"),
+                ("⏱️  Uptime", uptime),
+                ("👥 Online", f"{participants_count} users"),
+                ("🌐 Server", ntfy_server.replace('https://', ''))
+            ]
+            
+            for label, value in stats:
+                label_text = f"{Fore.YELLOW + Style.BRIGHT}{label}{Style.RESET_ALL}"
+                padding = width - len(label) - len(value) - 6
+                print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {label_text}{' ' * max(0, padding)}{value} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+            
+            print(f"{Back.BLACK}{Fore.CYAN}{'╚' + '═' * (width - 2) + '╝'}{Style.RESET_ALL}")
             print()
             continue
         elif msg == "/who":
             print("\033[1A\033[2K", end="")  # Move up one line and clear it
             active_users = sorted(list(room_participants))
+            width = ui.terminal_width
+            
             if active_users:
-                print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
-                print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}👥  ONLINE USERS ({len(active_users)}){Style.RESET_ALL}")
-                print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+                print(f"\n{Back.BLACK}{Fore.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Style.RESET_ALL}")
+                header_text = f"👥  ONLINE USERS ({len(active_users)})"
+                header_padding = width - len(header_text) - 4
+                print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {Fore.WHITE + Style.BRIGHT}{header_text}{Style.RESET_ALL}{' ' * header_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+                print(f"{Back.BLACK}{Fore.CYAN}{'╠' + '═' * (width - 2) + '╣'}{Style.RESET_ALL}")
+                
                 for user in active_users:
-                    status_icon = "● (you)" if user == nick else "●"
-                    user_color = ui.get_user_color(user)
-                    print(f"  {user_color + Style.BRIGHT}{status_icon} {user}{Style.RESET_ALL}")
-                print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+                    if user == nick:
+                        status_icon = "👑"
+                        status_text = f"{user} (you)"
+                        user_color = Fore.GREEN + Style.BRIGHT
+                    else:
+                        status_icon = "●"
+                        status_text = user
+                        user_color = ui.get_user_color(user) + Style.BRIGHT
+                    
+                    user_padding = width - len(f"{status_icon} {status_text}") - 6
+                    print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {user_color}{status_icon} {status_text}{Style.RESET_ALL}{' ' * max(0, user_padding)} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+                
+                print(f"{Back.BLACK}{Fore.CYAN}{'╚' + '═' * (width - 2) + '╝'}{Style.RESET_ALL}")
             else:
-                print(f"\n  {Fore.YELLOW}No other participants detected yet.{Style.RESET_ALL}")
+                print(f"\n{Back.BLACK}{Fore.CYAN}{'╔' + '═' * (width - 2) + '╗'}{Style.RESET_ALL}")
+                no_users_text = "No other participants detected yet."
+                no_users_padding = width - len(no_users_text) - 4
+                print(f"{Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL} {Fore.YELLOW + Style.BRIGHT}{no_users_text}{Style.RESET_ALL}{' ' * no_users_padding} {Back.BLACK}{Fore.CYAN}║{Style.RESET_ALL}")
+                print(f"{Back.BLACK}{Fore.CYAN}{'╚' + '═' * (width - 2) + '╝'}{Style.RESET_ALL}")
             print()
             continue
         elif msg.strip():

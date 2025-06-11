@@ -18,7 +18,7 @@
 - **Client-side encryption** - messages are encrypted before leaving your device
 - **Server blindness** - ntfy servers only see encrypted blobs, never plaintext
 - **Authenticated encryption** - prevents message tampering and ensures integrity
-- **Strong key derivation** - PBKDF2 with 100,000 iterations protects against brute force attacks
+- **Strong key derivation** - PBKDF2-HMAC-SHA256 with 100,000 iterations and static salt ensures a robust encryption key from your passphrase
 
 ### **Message Flow Security**
 ```

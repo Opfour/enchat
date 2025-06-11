@@ -14,7 +14,7 @@
 ## 🔒 Security & Encryption
 
 ### **How Your Messages Stay Safe**
-- **End-to-end encryption** using Fernet (AES 128 in CBC mode + HMAC-SHA256)
+- **End-to-end encryption** using AES-128 in CBC mode with HMAC-SHA256 and PBKDF2-based key derivation for enhanced security
 - **Client-side encryption** - messages are encrypted before leaving your device
 - **Server blindness** - ntfy servers only see encrypted blobs, never plaintext
 - **Authenticated encryption** - prevents message tampering and ensures integrity

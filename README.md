@@ -2,7 +2,7 @@
   <img src="https://sudosallie.com/enchatlogo.png" alt="Enchat Logo" width="400">
 </div>
 
-# 🔐 Enchat - Encrypted Terminal Chat
+# 🔐 Enchat - Encrypted Under The Radar Chat
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
@@ -14,11 +14,13 @@
 ## 🔒 Security & Encryption
 
 ### **How Your Messages Stay Safe**
-- **End-to-end encryption** using AES-128 in CBC mode with HMAC-SHA256 and PBKDF2-based key derivation for enhanced security
+- **End-to-end encryption** using AES-256 in CBC mode with HMAC-SHA256 and PBKDF2-based key derivation for enhanced security
 - **Client-side encryption** - messages are encrypted before leaving your device
 - **Server blindness** - ntfy servers only see encrypted blobs, never plaintext
 - **Authenticated encryption** - prevents message tampering and ensures integrity
 - **Strong key derivation** - PBKDF2-HMAC-SHA256 with 100,000 iterations and static salt ensures a robust encryption key from your passphrase
+- **Metadata protection** - usernames, timestamps, and system events are also encrypted
+- **Privacy by design** - no personal information stored or transmitted in plaintext
 
 ### **Message Flow Security**
 ```
@@ -28,9 +30,11 @@ Your Message → [Encrypt] → Encrypted Blob → ntfy Server → Encrypted Blob
 The ntfy server acts as a **message relay only** - it cannot decrypt your messages without your passphrase. Even if the server is compromised, your conversations remain secure.
 
 ### **Privacy Guarantees**
-- 🔐 **Zero knowledge** - servers never see message content
+- 🔐 **Zero knowledge** - servers never see message content, usernames, or timestamps
 - 🎭 **Anonymous** - no accounts or personal information required
+- 🛡️ **Metadata protection** - join/leave events and system messages encrypted
 - 🧹 **Clean exit** - secure wipe removes all traces
+- 📱 **Secure notifications** - desktop alerts never show message content
 
 ## ✨ Features
 
@@ -179,8 +183,9 @@ You can select your server during initial setup or use command line options to s
 | `/clear` | Clear screen |
 | `/exit` | Leave chat |
 | `/who` | Show all active room participants |
+| `/stats` | Session statistics and encryption info |
+| `/security` | Detailed security and privacy overview |
 | `/server` | Display current server information |
-| `/ratelimit` | Show rate limiting information and tips |
 
 ### Self-Hosted ntfy
 

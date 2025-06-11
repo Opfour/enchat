@@ -38,15 +38,93 @@ STATUS_CONNECTED = "🟢"
 STATUS_CONNECTING = "🟡"
 STATUS_DISCONNECTED = "🔴"
 
+# Enhanced UI Unicode (with ASCII fallback)
+try:
+    # Test if terminal supports Unicode box drawing
+    print("╔", end="", flush=True)
+    print("\r", end="", flush=True)  # Clear the test character
+    BOX_CHARS = {
+        'top_left': '╔', 'top_right': '╗', 'bottom_left': '╚', 'bottom_right': '╝',
+        'horizontal': '═', 'vertical': '║', 'cross': '╬', 'tee_down': '╦', 'tee_up': '╩',
+        'light_horizontal': '─', 'light_vertical': '│', 'light_cross': '┼'
+    }
+    UNICODE_SUPPORT = True
+except:
+    # Fallback to ASCII
+    BOX_CHARS = {
+        'top_left': '+', 'top_right': '+', 'bottom_left': '+', 'bottom_right': '+',
+        'horizontal': '=', 'vertical': '|', 'cross': '+', 'tee_down': '+', 'tee_up': '+',
+        'light_horizontal': '-', 'light_vertical': '|', 'light_cross': '+'
+    }
+    UNICODE_SUPPORT = False
+
 class ChatUI:
     def __init__(self):
-        self.terminal_width = os.get_terminal_size().columns
+        self.terminal_width = max(80, os.get_terminal_size().columns)  # Minimum 80 chars
+        self.terminal_height = max(24, os.get_terminal_size().lines)   # Minimum 24 rows
         self.status = STATUS_CONNECTING
+        self.message_count = 0
+        self.start_time = time.time()
+        self.typing_users = set()
+        self.last_activity = time.time()
+        self.sidebar_width = min(25, self.terminal_width // 4)  # Adaptive sidebar
+        self.main_width = self.terminal_width - self.sidebar_width - 1
+        self.user_colors = {}  # Cache for consistent user colors
+        self.color_palette = [
+            Fore.MAGENTA, Fore.CYAN, Fore.YELLOW, Fore.GREEN, 
+            Fore.BLUE, Fore.RED, Fore.WHITE
+        ]
         
     def get_timestamp(self):
         return datetime.now().strftime("%H:%M:%S")
     
+    def get_user_color(self, username):
+        """Get consistent color for a user"""
+        if username not in self.user_colors:
+            color_index = len(self.user_colors) % len(self.color_palette)
+            self.user_colors[username] = self.color_palette[color_index]
+        return self.user_colors[username]
+    
+    def get_uptime(self):
+        """Get formatted uptime"""
+        uptime = int(time.time() - self.start_time)
+        hours = uptime // 3600
+        minutes = (uptime % 3600) // 60
+        seconds = uptime % 60
+        if hours > 0:
+            return f"{hours}h {minutes}m"
+        elif minutes > 0:
+            return f"{minutes}m {seconds}s"
+        else:
+            return f"{seconds}s"
+    
+    def print_modern_header(self, room, nick, ntfy_server):
+        """Clean, minimal header design"""
+        
+        # Simple, clean header
+        print(f"\n{Fore.CYAN + Style.BRIGHT}🔐 ENCHAT{Style.RESET_ALL} {Fore.CYAN}• Encrypted Under The Radar Chat{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}")
+        
+        # Status line with minimal design  
+        participants_count = len(room_participants)
+        
+        # Clean status indicators
+        if self.status == "🟢":
+            status_text = f"{Fore.GREEN}● Online{Style.RESET_ALL}"
+        elif self.status == "🟡":
+            status_text = f"{Fore.YELLOW}● Connecting{Style.RESET_ALL}"
+        else:
+            status_text = f"{Fore.RED}● Offline{Style.RESET_ALL}"
+        
+        print(f"{Fore.GREEN}🏠 {room}{Style.RESET_ALL}  •  {Fore.BLUE}👤 {nick}{Style.RESET_ALL}  •  {status_text}  •  {Fore.RED}🔒 Encrypted{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}{'─' * 60}{Style.RESET_ALL}\n")
+    
+    def print_enhanced_header(self, room, nick, ntfy_server):
+        """Legacy enhanced header - calls modern version"""
+        self.print_modern_header(room, nick, ntfy_server)
+    
     def print_header(self):
+        """Legacy header for backwards compatibility"""
         width = self.terminal_width
         header = "ENCRYPTED TERMINAL CHAT"
         padding = (width - len(header) - 2) // 2
@@ -87,22 +165,74 @@ class ChatUI:
             
         print(f"{Fore.BLACK + Style.BRIGHT}[{timestamp}]{Style.RESET_ALL} {color}{icon} {msg}{Style.RESET_ALL}")
     
-    def print_user_message(self, user, msg, is_own=False):
+    def print_modern_message(self, user, msg, is_own=False, msg_type="normal"):
+        """Modern, clean message bubbles"""
         timestamp = self.get_timestamp()
+        self.message_count += 1
         
         # Truncate long messages
         if len(msg) > MAX_MESSAGE_LENGTH:
             msg = msg[:MAX_MESSAGE_LENGTH - 3] + "..."
         
+        # Clean, modern message design
         if is_own:
-            user_color = Fore.GREEN + Style.BRIGHT
-            msg_color = Style.RESET_ALL
+            # Your messages - right aligned, green accent
+            user_display = "You"
+            accent_color = Fore.GREEN
+            bg_color = Back.BLACK
+            align_padding = "    "  # Right align
         else:
-            user_color = Fore.MAGENTA + Style.BRIGHT  
-            msg_color = Style.RESET_ALL
-            
-        # Format: [timestamp] username: message
-        print(f"{Fore.BLACK + Style.BRIGHT}[{timestamp}]{Style.RESET_ALL} {user_color}{user}:{Style.RESET_ALL} {msg_color}{msg}")
+            # Others' messages - left aligned, user-specific color
+            user_display = user
+            accent_color = self.get_user_color(user)
+            bg_color = Back.BLACK
+            align_padding = ""
+        
+        # Special message types
+        if msg_type == "encrypted":
+            accent_color = Fore.RED
+            msg = f"🔒 {msg}"
+        elif msg_type == "system":
+            accent_color = Fore.YELLOW
+            user_display = "System"
+        
+        # Clean header with timestamp
+        header = f"{align_padding}{accent_color + Style.BRIGHT}● {user_display}{Style.RESET_ALL} {Fore.BLACK + Style.BRIGHT}{timestamp}{Style.RESET_ALL}"
+        print(header)
+        
+        # Message content with clean indentation
+        words = msg.split(' ')
+        lines = []
+        current_line = ""
+        max_line_length = min(70, self.terminal_width - 10)
+        
+        for word in words:
+            if len(current_line + word) <= max_line_length:
+                current_line += word + " "
+            else:
+                if current_line:
+                    lines.append(current_line.rstrip())
+                current_line = word + " "
+        if current_line:
+            lines.append(current_line.rstrip())
+        
+        # Print message content with subtle background
+        for i, line in enumerate(lines):
+            if is_own:
+                padding = self.terminal_width - len(line) - 6
+                print(f"      {bg_color}{line}{' ' * max(0, padding)}{Style.RESET_ALL}")
+            else:
+                print(f"  {bg_color}{line}{Style.RESET_ALL}")
+        
+        print()  # Clean spacing between messages
+    
+    def print_rich_message(self, user, msg, is_own=False, msg_type="normal"):
+        """Legacy rich message - calls modern version"""
+        self.print_modern_message(user, msg, is_own, msg_type)
+    
+    def print_user_message(self, user, msg, is_own=False):
+        """Always use modern message format"""
+        self.print_modern_message(user, msg, is_own)
     
     def print_connection_status(self, status, details=""):
         if status == "connecting":
@@ -118,8 +248,35 @@ class ChatUI:
             self.status = STATUS_CONNECTING
             self.print_system_message(f"Reconnecting... {details}", "info")
     
+    def print_modern_input_area(self, current_input=""):
+        """Modern, minimal input area"""
+        width = self.terminal_width
+        char_count = len(current_input)
+        
+        # Clean input separator
+        print(f"{Back.BLACK}{Fore.CYAN}{'─' * width}{Style.RESET_ALL}")
+        
+        # Minimal prompt with character count
+        if char_count > MAX_MESSAGE_LENGTH * 0.8:  # Warning when approaching limit
+            char_color = Fore.YELLOW
+        elif char_count > MAX_MESSAGE_LENGTH * 0.9:
+            char_color = Fore.RED
+        else:
+            char_color = Fore.CYAN
+        
+        char_info = f"{char_color}{char_count}/{MAX_MESSAGE_LENGTH}{Style.RESET_ALL}"
+        prompt_line = f"  💬  {Fore.WHITE}Type your message...{Style.RESET_ALL}  {char_info}"
+        
+        print(f"{Back.BLACK}{prompt_line}{Style.RESET_ALL}")
+        print(f"{Back.BLACK}{Fore.CYAN}{'─' * width}{Style.RESET_ALL}")
+    
+    def print_enhanced_input_area(self, current_input=""):
+        """Legacy input area - calls modern version"""
+        self.print_modern_input_area(current_input)
+    
     def print_input_prompt(self):
-        return f"{Fore.GREEN + Style.BRIGHT}💬 > {Style.RESET_ALL}"
+        """Modern, clean input prompt"""
+        return f"{Fore.GREEN + Style.BRIGHT}→ {Style.RESET_ALL}"
     
     def print_loading_animation(self, text, duration=2):
         frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
@@ -296,54 +453,112 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
                     if len(seen) > 500:
                         seen = set(list(seen)[-250:])
                     
-                    # System events
-                    if line.startswith("[SYSTEM]["):
-                        who = line.split("]")[1][1:]
-                        what = line.split("] ")[-1]
+                    # Handle new encrypted format
+                    if line.startswith("SYS:") or line.startswith("MSG:"):
+                        msg_type = line[:4]
+                        encrypted_data = line[4:]
                         
-                        # Handle participant tracking
-                        if what == "joined":
-                            room_participants.add(who)
-                            if who != nick:
-                                ui.print_system_message(f"{who} joined the chat", "join")
-                                notify(f"{who} joined")
-                                # Send a ping after someone joins to help them discover existing participants
-                                send_system(room, nick, "ping", ntfy_server)
-                        elif what == "left":
-                            if who in room_participants:
-                                room_participants.remove(who)
-                            if who != nick:
-                                ui.print_system_message(f"{who} left the chat", "leave")
-                                notify(f"{who} left")
-                        elif what == "ping" and who != nick:
-                            # When we receive a ping, add the sender to participants if not already there
-                            # and send our own ping in response if we haven't recently
-                            room_participants.add(who)
-                            current_time = time.time()
-                            if current_time - last_ping_time > 5:  # Limit ping responses to avoid flooding
-                                send_system(room, nick, "ping", ntfy_server)
-                                last_ping_time = current_time
-                        continue
-                    
-                    # Chat messages
-                    if not line.startswith("[") or "] " not in line:
-                        continue
-                    sender = line.split("]")[0][1:]
-                    data   = "]".join(line.split("]")[1:]).strip()
-                    
-                    # Add message sender to participants list
-                    if sender != nick:
-                        room_participants.add(sender)
-                    
-                    plain = decrypt_msg(data, fernet)
-                    if plain is not None:
-                        is_own_message = (sender == nick)
-                        if not is_own_message:  # Only show messages from others
-                            ui.print_user_message(sender, plain, is_own=False)
-                            notify(f"New message from {sender}")  # Privacy: no message content in notifications
-                    else:
-                        if data.startswith(("U2FsdGVk","gAAAA")):
-                            ui.print_user_message(sender, "[🔒 Encrypted message - wrong passphrase]")
+                        # Try to decrypt the payload
+                        plain_payload = decrypt_msg(encrypted_data, fernet)
+                        if plain_payload is None:
+                            # Invalid encryption - skip this message
+                            continue
+                            
+                        try:
+                            # Parse the decrypted payload: timestamp|nick|content
+                            parts = plain_payload.split("|", 2)
+                            if len(parts) != 3:
+                                continue
+                                
+                            msg_timestamp, sender, content = parts
+                            
+                            # Add sender to participants list
+                            if sender != nick:
+                                room_participants.add(sender)
+                            
+                            if msg_type == "SYS:":
+                                # Handle system events
+                                if content.startswith("SYSTEM:"):
+                                    what = content[7:]  # Remove "SYSTEM:" prefix
+                                    
+                                    if what == "joined":
+                                        room_participants.add(sender)
+                                        if sender != nick:
+                                            ui.print_system_message(f"{sender} joined the chat", "join")
+                                            notify(f"{sender} joined")
+                                            # Send a ping after someone joins to help them discover existing participants
+                                            send_system(room, nick, "ping", ntfy_server, fernet)
+                                    elif what == "left":
+                                        if sender in room_participants:
+                                            room_participants.remove(sender)
+                                        if sender != nick:
+                                            ui.print_system_message(f"{sender} left the chat", "leave")
+                                            notify(f"{sender} left")
+                                    elif what == "ping" and sender != nick:
+                                        # When we receive a ping, add the sender to participants if not already there
+                                        # and send our own ping in response if we haven't recently
+                                        room_participants.add(sender)
+                                        current_time = time.time()
+                                        if current_time - last_ping_time > 5:  # Limit ping responses to avoid flooding
+                                            send_system(room, nick, "ping", ntfy_server, fernet)
+                                            last_ping_time = current_time
+                            elif msg_type == "MSG:":
+                                # Handle chat messages
+                                is_own_message = (sender == nick)
+                                if not is_own_message:  # Only show messages from others
+                                    ui.print_user_message(sender, content, is_own=False)
+                                    notify(f"New message from {sender}")  # Privacy: no message content in notifications
+                                    
+                        except (ValueError, IndexError):
+                            # Malformed payload - skip
+                            continue
+                            
+                    # Legacy format support (for backwards compatibility)
+                    elif line.startswith("[SYSTEM][") or (line.startswith("[") and "] " in line):
+                        # Handle old plaintext format for backwards compatibility
+                        if line.startswith("[SYSTEM]["):
+                            who = line.split("]")[1][1:]
+                            what = line.split("] ")[-1]
+                            
+                            # Handle participant tracking
+                            if what == "joined":
+                                room_participants.add(who)
+                                if who != nick:
+                                    ui.print_system_message(f"{who} joined the chat", "join")
+                                    notify(f"{who} joined")
+                                    send_system(room, nick, "ping", ntfy_server, fernet)
+                            elif what == "left":
+                                if who in room_participants:
+                                    room_participants.remove(who)
+                                if who != nick:
+                                    ui.print_system_message(f"{who} left the chat", "leave")
+                                    notify(f"{who} left")
+                            elif what == "ping" and who != nick:
+                                room_participants.add(who)
+                                current_time = time.time()
+                                if current_time - last_ping_time > 5:
+                                    send_system(room, nick, "ping", ntfy_server, fernet)
+                                    last_ping_time = current_time
+                        else:
+                            # Legacy chat message format
+                            sender = line.split("]")[0][1:]
+                            data = "]".join(line.split("]")[1:]).strip()
+                            
+                            if sender != nick:
+                                room_participants.add(sender)
+                            
+                            plain = decrypt_msg(data, fernet)
+                            if plain is not None:
+                                is_own_message = (sender == nick)
+                                if not is_own_message:
+                                    ui.print_user_message(sender, plain, is_own=False)
+                                    notify(f"New message from {sender}")
+                            else:
+                                if data.startswith(("U2FsdGVk","gAAAA")):
+                                    if ui.terminal_width >= 100:
+                                        ui.print_rich_message(sender, "Encrypted message - wrong passphrase", msg_type="encrypted")
+                                    else:
+                                        ui.print_user_message(sender, "[🔒 Encrypted message - wrong passphrase]")
                             
         except Exception as e:
             if not stop_event.is_set():
@@ -353,13 +568,18 @@ def listen(room: str, nick: str, fernet: Fernet, stop_event: threading.Event, nt
 
 def send_msg(room: str, msg: str, nick: str, fernet: Fernet, ntfy_server: str):
     try:
-        enc = encrypt_msg(msg, fernet)
+        # Create a payload with timestamp, nick, and message - all encrypted together
+        timestamp = int(time.time())
+        payload = f"{timestamp}|{nick}|{msg}"
+        enc = encrypt_msg(payload, fernet)
+        
         max_retries = 3
         retry_count = 0
         retry_delay = 1
         
         while retry_count < max_retries:
-            response = requests.post(f"{ntfy_server}/{room}", data=f"[{nick}] {enc}", timeout=10)
+            # Send only encrypted data - no plaintext identifiers
+            response = requests.post(f"{ntfy_server}/{room}", data=f"MSG:{enc}", timeout=10)
             
             if response.status_code == 200:
                 return True  # Message sent successfully
@@ -385,14 +605,20 @@ def send_msg(room: str, msg: str, nick: str, fernet: Fernet, ntfy_server: str):
         ui.print_system_message(f"Failed to send message: {str(e)[:50]}", "error")
         return False
 
-def send_system(room: str, nick: str, what: str, ntfy_server: str):
+def send_system(room: str, nick: str, what: str, ntfy_server: str, fernet: Fernet):
     try:
+        # Encrypt system events too for better privacy
+        timestamp = int(time.time())
+        payload = f"{timestamp}|{nick}|SYSTEM:{what}"
+        enc = encrypt_msg(payload, fernet)
+        
         max_retries = 2
         retry_count = 0
         retry_delay = 1
         
         while retry_count < max_retries:
-            response = requests.post(f"{ntfy_server}/{room}", data=f"[SYSTEM][{nick}] {what}", timeout=10)
+            # Send encrypted system event - no plaintext identifiers
+            response = requests.post(f"{ntfy_server}/{room}", data=f"SYS:{enc}", timeout=10)
             
             if response.status_code == 200:
                 return True
@@ -415,7 +641,7 @@ def send_system(room: str, nick: str, what: str, ntfy_server: str):
 def setup_initial_config(args):
     """Handle initial configuration with enhanced UI"""
     os.system("clear")
-    ui.print_header()
+    ui.print_header()  # Use legacy header during setup for simplicity
     
     print(f"{Fore.CYAN}Welcome to Enchat! Let's set up your encrypted chat.{Style.RESET_ALL}\n")
     
@@ -551,7 +777,7 @@ def main():
         if room and nick and not secret:
             # Config exists but no passphrase - prompt for it
             os.system("clear")
-            ui.print_header()
+            ui.print_enhanced_header(room, nick, ntfy_server)
             print(f"{Fore.GREEN}✨ Welcome back, {Style.BRIGHT}{nick}{Style.RESET_ALL}{Fore.GREEN}!{Style.RESET_ALL}")
             print(f"{Fore.CYAN}🔐 Please enter your passphrase for room '{room}'{Style.RESET_ALL}")
             while True:
@@ -566,10 +792,8 @@ def main():
         room = room.lower().strip()
         
         os.system("clear")
-        ui.print_header()
         print(f"{Fore.GREEN}✨ Welcome back, {Style.BRIGHT}{nick}{Style.RESET_ALL}{Fore.GREEN}!{Style.RESET_ALL}")
-        server_display = ntfy_server.replace("https://", "").replace("http://", "")
-        print(f"{Fore.CYAN}📡 Connecting to room '{room}' via {server_display}...{Style.RESET_ALL}\n")
+        print(f"{Fore.CYAN}📡 Connecting to encrypted room...{Style.RESET_ALL}\n")
 
     key = gen_key(secret)
     fernet = Fernet(key)
@@ -578,13 +802,9 @@ def main():
     ui.print_connection_status("connecting", "Establishing secure connection...")
     ui.print_loading_animation("Connecting", 1)
     
-    print()
-    ui.print_status_bar(room, nick, ntfy_server)
-    print()
-    
     # Join the room
     ui.print_system_message(f"Joined room '{room}' • Type /exit to quit, /clear to clear screen", "info")
-    send_system(room, nick, "joined", ntfy_server)
+    send_system(room, nick, "joined", ntfy_server, fernet)
     
     # Start listening thread
     stop_event = threading.Event()
@@ -597,8 +817,13 @@ def main():
     time.sleep(0.5)
     ui.print_connection_status("connected", "Ready to chat!")
     
+    # Now show the header with the correct connected status
+    print()
+    ui.print_enhanced_header(room, nick, ntfy_server)
+    print()
+    
     # Send initial ping to announce presence to existing participants
-    send_system(room, nick, "ping", ntfy_server)
+    send_system(room, nick, "ping", ntfy_server, fernet)
     
     # Start ping thread to maintain presence
     def ping_thread():
@@ -606,7 +831,7 @@ def main():
         while not stop_event.is_set():
             current_time = time.time()
             if current_time - last_ping_time > PING_INTERVAL:
-                send_system(room, nick, "ping", ntfy_server)
+                send_system(room, nick, "ping", ntfy_server, fernet)
                 last_ping_time = current_time
             time.sleep(5)  # Check every 5 seconds
     
@@ -617,7 +842,7 @@ def main():
 
     def on_exit(sig, frame):
         print(f"\n{Fore.YELLOW}👋 Leaving chat...{Style.RESET_ALL}")
-        send_system(room, nick, "left", ntfy_server)
+        send_system(room, nick, "left", ntfy_server, fernet)
         ui.print_system_message("You left the chat. Goodbye!", "leave")
         stop_event.set()
         sys.exit(0)
@@ -638,18 +863,45 @@ def main():
                 os.system("cls")
             else:
                 os.system("clear")
-            ui.print_header()
-            ui.print_status_bar(room, nick, ntfy_server)
+            ui.print_enhanced_header(room, nick, ntfy_server)
             print()
             continue
         elif msg == "/help":
-            print(f"\n{Fore.CYAN}📖 Available commands:{Style.RESET_ALL}")
-            print(f"  {Fore.GREEN}/exit{Style.RESET_ALL}  - Leave the chat")
-            print(f"  {Fore.GREEN}/clear{Style.RESET_ALL} - Clear the screen") 
-            print(f"  {Fore.GREEN}/help{Style.RESET_ALL}  - Show this help")
-            print(f"  {Fore.GREEN}/who{Style.RESET_ALL}   - Show active room participants")
-            print(f"  {Fore.GREEN}/server{Style.RESET_ALL} - Show current server information")
-            print(f"  {Fore.GREEN}/ratelimit{Style.RESET_ALL} - Show information about rate limiting\n")
+            print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}📖  AVAILABLE COMMANDS{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/exit{Style.RESET_ALL}    Leave chat and secure wipe")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/clear{Style.RESET_ALL}   Refresh interface")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/who{Style.RESET_ALL}     Show online users")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/stats{Style.RESET_ALL}   Session statistics")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/security{Style.RESET_ALL} Security & privacy info")
+            print(f"  {Fore.GREEN + Style.BRIGHT}/server{Style.RESET_ALL}  Server information")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print()
+            continue
+        elif msg == "/security":
+            print("\033[1A\033[2K", end="")  # Move up one line and clear it
+            print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}🛡️  SECURITY & PRIVACY OVERVIEW{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"  {Fore.GREEN + Style.BRIGHT}✅ ENCRYPTED (Hidden from server/network):{Style.RESET_ALL}")
+            print(f"     • Message content")
+            print(f"     • Usernames/nicknames") 
+            print(f"     • Timestamps")
+            print(f"     • Join/leave/ping events")
+            print(f"     • All metadata")
+            print()
+            print(f"  {Fore.YELLOW + Style.BRIGHT}⚠️  VISIBLE (But necessary for routing):{Style.RESET_ALL}")
+            print(f"     • Room name (in URL path)")
+            print(f"     • Message prefixes (MSG:/SYS: - 4 chars only)")
+            print()
+            print(f"  {Fore.CYAN + Style.BRIGHT}🔒 ENCRYPTION DETAILS:{Style.RESET_ALL}")
+            print(f"     • Algorithm: AES-256 in CBC mode + HMAC-SHA256")
+            print(f"     • Key derivation: PBKDF2-SHA256 (100,000 iterations)")
+            print(f"     • Message format: timestamp|username|content")
+            print(f"     • All data encrypted before network transmission")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print()
             continue
         elif msg == "/server":
             print("\033[1A\033[2K", end="")  # Move up one line and clear it
@@ -682,22 +934,38 @@ def main():
             print(f"      See: https://docs.ntfy.sh/install/")
             print()
             continue
+        elif msg == "/stats":
+            print("\033[1A\033[2K", end="")  # Move up one line and clear it
+            uptime = ui.get_uptime()
+            participants_count = len(room_participants)
+            
+            print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}📊  SESSION STATISTICS{Style.RESET_ALL}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print(f"  {Fore.YELLOW}🔒 Encryption{Style.RESET_ALL}      AES-256-CBC + HMAC-SHA256")
+            print(f"  {Fore.YELLOW}🔑 Key Derivation{Style.RESET_ALL}  PBKDF2-SHA256 (100k rounds)")
+            print(f"  {Fore.YELLOW}🛡️  Privacy{Style.RESET_ALL}         Usernames, timestamps & events encrypted")
+            print(f"  {Fore.YELLOW}💬 Messages{Style.RESET_ALL}        {ui.message_count} received")
+            print(f"  {Fore.YELLOW}⏱️  Uptime{Style.RESET_ALL}          {uptime}")
+            print(f"  {Fore.YELLOW}👥 Online{Style.RESET_ALL}          {participants_count} users")
+            print(f"  {Fore.YELLOW}🌐 Server{Style.RESET_ALL}          {ntfy_server.replace('https://', '')}")
+            print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            print()
+            continue
         elif msg == "/who":
             print("\033[1A\033[2K", end="")  # Move up one line and clear it
-            
-            # Create an encrypted copy of the participant list
-            encrypted_participants = []
-            for participant in sorted(room_participants):
-                encrypted_participants.append(encrypt_msg(participant, fernet))
-            
-            # Display participants locally
-            count = len(room_participants)
-            print(f"\n{Fore.CYAN}👥 Room participants ({count}):{Style.RESET_ALL}")
-            for participant in sorted(room_participants):
-                if participant == nick:
-                    print(f"  {Fore.GREEN}{participant} (you){Style.RESET_ALL}")
-                else:
-                    print(f"  {Fore.YELLOW}{participant}{Style.RESET_ALL}")
+            active_users = sorted(list(room_participants))
+            if active_users:
+                print(f"\n{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+                print(f"{Back.BLACK}  {Fore.WHITE + Style.BRIGHT}👥  ONLINE USERS ({len(active_users)}){Style.RESET_ALL}")
+                print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+                for user in active_users:
+                    status_icon = "● (you)" if user == nick else "●"
+                    user_color = ui.get_user_color(user)
+                    print(f"  {user_color + Style.BRIGHT}{status_icon} {user}{Style.RESET_ALL}")
+                print(f"{Back.BLACK}{Fore.CYAN}{'─' * ui.terminal_width}{Style.RESET_ALL}")
+            else:
+                print(f"\n  {Fore.YELLOW}No other participants detected yet.{Style.RESET_ALL}")
             print()
             continue
         elif msg.strip():
@@ -707,7 +975,15 @@ def main():
             # Clear the entire input line using ANSI escape codes
             print("\033[1A\033[2K", end="")  # Move up one line and clear it
             ui.print_user_message(nick, msg, is_own=True)
-            send_msg(room, msg, nick, fernet, ntfy_server)
+            
+            # Visual feedback for message sending
+            print(f"{Fore.BLUE}📤 Sending...{Style.RESET_ALL}", end="", flush=True)
+            success = send_msg(room, msg, nick, fernet, ntfy_server)
+            print(f"\r{' ' * 15}\r", end="")  # Clear sending message
+            if success:
+                print(f"{Fore.GREEN}✓ Sent{Style.RESET_ALL}")
+            else:
+                print(f"{Fore.RED}✗ Failed to send{Style.RESET_ALL}")
 
 if __name__ == "__main__":
     main()

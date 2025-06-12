@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """enchat – encrypted terminal chat
-fixed UI + full original functionality (2025-06-13)"""
+fixed UI + full original functionality (2025‑06‑13)"""
 # ———————————————————————————————————————————————————
 import os, sys, time, signal, threading, queue, argparse, base64, hashlib, select, subprocess, requests
 from getpass import getpass
@@ -118,10 +118,12 @@ def send_msg(room: str, nick: str, msg: str, server: str, f: Fernet) -> bool:
     ts = int(time.time()); return _post_with_retry(f"{server}/{room}", f"MSG:{encrypt(f'{ts}|{nick}|{msg}', f)}")
 
 # — listener —
+# Keep track of when *this* client joined so we can ignore stale "left"
+join_ts = int(time.time())
 
 def listen(room: str, nick: str, f: Fernet, server: str, msgs: list, stop: threading.Event):
     global last_ping_time
-    url = f"{server}/{room}/raw?x-sse=true"
+    url = f"{server}/{room}/raw?x-sse=true&since=-30m&poll=65"
     headers = {"Accept":"text/event-stream", "Cache-Control":"no-cache"}
     seen: set[str] = set(); session = requests.Session(); room_participants.add(nick)
     while not stop.is_set():
@@ -140,15 +142,35 @@ def listen(room: str, nick: str, f: Fernet, server: str, msgs: list, stop: threa
                         _, sender, content = plain.split("|", 2)
                         if kind == "SYS:":
                             evt = content.replace("SYSTEM:", "")
-                            if evt == "joined": room_participants.add(sender); msgs.append(("System", f"{sender} joined", False)); notify(f"{sender} joined"); send_system(room, nick, "ping", server, f)
-                            elif evt == "left": room_participants.discard(sender); msgs.append(("System", f"{sender} left", False)); notify(f"{sender} left")
-                            elif evt == "ping": room_participants.add(sender)
+                            # ignore stale "left" events that happened before we joined
+                            if evt == "left" and sender == nick:
+                                try:
+                                    if int(ts) < join_ts:
+                                        continue  # skip old leave of ourselves
+                                except Exception:
+                                    continue
+                            if evt == "joined":
+                                room_participants.add(sender)
+                                if sender != nick:
+                                    msgs.append(("System", f"{sender} joined", False)); notify(f"{sender} joined"); send_system(room, nick, "ping", server, f)
+                            if len(msgs) > 500:
+                                del msgs[:100]
+                            elif evt == "left":
+                                room_participants.discard(sender)
+                                if sender != nick:
+                                    msgs.append(("System", f"{sender} left", False)); notify(f"{sender} left")
+                            if len(msgs) > 500:
+                                del msgs[:100]
+                            elif evt == "ping":
+                                room_participants.add(sender)
                         else:
                             if sender != nick: room_participants.add(sender); msgs.append((sender, content, False)); notify(f"Message from {sender}")
+                            if len(msgs) > 500:
+                                del msgs[:100]
         except Exception as exc:
             console.log(f"[red]conn error:[/] {exc}"); time.sleep(2)
 
-# — non-blocking char input —
+# — non‑blocking char input —
 current_input: list[str] = []
 input_queue = queue.Queue()
 
@@ -207,7 +229,9 @@ class ChatUI:
         stop = threading.Event(); threading.Thread(target=listen, args=(self.room,self.nick,self.f,self.server,self.msgs,stop),daemon=True).start()
         start_char_thread()
         self.msgs.append(("System", f"Joined {self.room}", False)); send_system(self.room,self.nick,"joined",self.server,self.f)
-        with Live(self.layout, refresh_per_second=20, screen=False) as live:
+        if len(self.msgs) > 500:
+            del self.msgs[:100]
+        with Live(self.layout, refresh_per_second=5, screen=False) as live:
             while True:
                 self.layout["header"].update(self._header()); self.layout["body"].update(self._body()); self.layout["input"].update(self._input()); live.refresh()
                 try: line = input_queue.get_nowait()
@@ -219,41 +243,105 @@ class ChatUI:
 
     def _handle(self, line: str):
         if len(line) > MAX_MSG_LEN:
-            self.msgs.append(("System", "❌ message too long", False)); return
+            self.msgs.append(("System", "❌ message too long", False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            return
         if not line.startswith("/"):
-            ok = send_msg(self.room,self.nick,line,self.server,self.f); self.msgs.append((self.nick,line,True));
-            if not ok: self.msgs.append(("System","❌ failed",False)); return
+            ok = send_msg(self.room,self.nick,line,self.server,self.f); self.msgs.append((self.nick,line,True))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            if not ok: self.msgs.append(("System","❌ failed",False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            return
         cmd = line.lower().strip()
         if cmd == "/clear": self.msgs.clear(); return
         if cmd == "/help":
             for c,d in [("/help","help"),("/clear","clear screen"),("/exit","leave"),("/who","participants"),("/stats","stats"),("/security","crypto info"),("/server","server info")]:
-                self.msgs.append(("System", f"{c}: {d}", False)); return
+                self.msgs.append(("System", f"{c}: {d}", False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            return
         if cmd == "/who":
-            users = sorted(room_participants); self.msgs.append(("System", f"=== ONLINE ({len(users)}) ===", False))
-            for u in users: tag = "👑" if u==self.nick else "●"; self.msgs.append(("System", f"{tag} {u}", False)); return
+            # make sure we always report ourselves even if an old "left" event pruned us
+            room_participants.add(self.nick)
+            users = sorted(room_participants)
+            self.msgs.append(("System", f"=== ONLINE ({len(users)}) ===", False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            for u in users: 
+                tag = "👑" if u==self.nick else "●"
+                self.msgs.append(("System", f"{tag} {u}", False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            return
         if cmd == "/stats":
-            tot = len([m for m in self.msgs if m[0]!="System"]); mine = len([m for m in self.msgs if m[0]==self.nick])
-            self.msgs.append(("System", f"Sent {mine} / Recv {tot-mine} / Total {tot}", False)); return
-        if cmd == "/security": self.msgs.append(("System","AES-256 (Fernet), PBKDF2-SHA256 100k",False)); return
-        if cmd == "/server": self.msgs.append(("System", f"Server {self.server}", False)); return
+            tot = len([m for m in self.msgs if m[0]!="System"])
+            mine = len([m for m in self.msgs if m[0]==self.nick])
+            self.msgs.append(("System", f"Sent {mine} / Recv {tot-mine} / Total {tot}", False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            return
+        if cmd == "/security": 
+            self.msgs.append(("System","AES‑256 (Fernet), PBKDF2‑SHA256 100k",False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            return
+        if cmd == "/server": 
+            self.msgs.append(("System", f"Server {self.server}", False))
+            if len(self.msgs) > 500:
+                del self.msgs[:100]
+            return
         if not line.startswith("/"): return
         self.msgs.append(("System", f"Unknown command {cmd}", False))
+        if len(self.msgs) > 500:
+            del self.msgs[:100]
 
 # — setup helpers —
 
-def first_run(args) -> Tuple[str,str,str,str]:
-    console.clear(); console.print("[bold cyan]🔐 First setup[/]")
-    room = Prompt.ask("🏠 Room").strip().lower(); nick = Prompt.ask("👤 Nick").strip(); secret = getpass("🔑 Passphrase: ")
-    server = ENCHAT_NTFY if args.enchat_server else (args.server.rstrip("/") if args.server else DEFAULT_NTFY)
-    save_conf(room,nick,"",server)
-    if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y","n"], default="y") == "y": save_passphrase_keychain(room,secret)
-    else: save_conf(room,nick,secret,server)
-    return room,nick,secret,server
+def first_run(args) -> Tuple[str, str, str, str]:
+    """Interactive first‑time setup, including server choice."""
+    console.clear(); console.print("[bold cyan]🔐 First‑time setup[/]")
+    room = Prompt.ask("🏠 Room name").strip().lower()
+    nick = Prompt.ask("👤 Nickname").strip()
+    secret = getpass("🔑 Passphrase: ")
+
+    # ─── Choose ntfy server ───
+    if args.server:
+        server = args.server.rstrip('/')
+    elif args.enchat_server:
+        server = ENCHAT_NTFY
+    elif args.default_server:
+        server = DEFAULT_NTFY
+    else:
+        console.print("[cyan]🌐 Select ntfy server:[/]")
+        console.print(f"  [yellow]1)[/] Enchat dedicated server ({ENCHAT_NTFY}) – recommended")
+        console.print(f"  [yellow]2)[/] Default public server ({DEFAULT_NTFY}) – rate‑limited")
+        console.print("  [yellow]3)[/] Custom server URL")
+        choice = Prompt.ask("Option", choices=["1","2","3"], default="1")
+        if choice == "1":
+            server = ENCHAT_NTFY
+        elif choice == "2":
+            server = DEFAULT_NTFY
+        else:
+            server = Prompt.ask("Enter full server URL (e.g. https://ntfy.example.org)").rstrip('/')
+
+    # save minimal config (no secret yet)
+    save_conf(room, nick, "", server)
+    if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y","n"], default="y") == "y":
+        save_passphrase_keychain(room, secret)
+    else:
+        save_conf(room, nick, secret, server)
+    return room, nick, secret, server
 
 # — main —
 if __name__ == "__main__":
     ap = argparse.ArgumentParser("enchat")
-    ap.add_argument("--server"), ap.add_argument("--enchat-server", action="store_true"), ap.add_argument("--reset", action="store_true")
+    ap.add_argument("--server", help="use custom ntfy server (https://…)")
+    ap.add_argument("--enchat-server", action="store_true", help="use enchat.sudosallie.com")
+    ap.add_argument("--default-server", action="store_true", help="use default ntfy.sh")
+    ap.add_argument("--reset", action="store_true", help="clear saved settings")
     ns = ap.parse_args()
     if ns.reset and os.path.exists(CONF_FILE): os.remove(CONF_FILE); console.print("[green]settings cleared[/]"); sys.exit()
     room,nick,secret,server = load_conf()

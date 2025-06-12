@@ -51,26 +51,26 @@ if $USE_VENV; then
   source "$VENV_DIR/bin/activate"
   echo "📦 Installing dependencies in venv…"
   pip install --upgrade pip
-  
-  # Check if running on macOS with LibreSSL
+
+  # macOS LibreSSL workaround remains
   if [[ "$(uname)" == "Darwin" ]] && python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" | grep -q "LibreSSL"; then
-    echo "🍎 macOS with LibreSSL detected - installing compatible dependencies"
-    pip install urllib3==1.26.16  # Install compatible urllib3 version first
-    pip install requests colorama cryptography keyring
-  else
-    pip install requests colorama cryptography keyring
+    echo "🍎 macOS with LibreSSL detected - installing compatible urllib3 first"
+    pip install urllib3==1.26.16
   fi
+
+  # **Enhanced dependencies with keyring for secure storage**
+  pip install requests colorama cryptography keyring rich
 else
-  echo "⚠️  Virtualenv not available – installing dependencies to user site"
-  
-  # Check if running on macOS with LibreSSL
+  echo "⚠️  Virtualenv niet beschikbaar – installeren naar user-site…"
+
+  # macOS LibreSSL workaround
   if [[ "$(uname)" == "Darwin" ]] && python3 -c "import ssl; print(ssl.OPENSSL_VERSION)" | grep -q "LibreSSL"; then
-    echo "🍎 macOS with LibreSSL detected - installing compatible dependencies"
-    pip3 install --user urllib3==1.26.16  # Install compatible urllib3 version first
-    pip3 install --user requests colorama cryptography keyring
-  else
-    pip3 install --user requests colorama cryptography keyring
+    echo "🍎 macOS with LibreSSL detected - installing compatible urllib3 first"
+    pip3 install --user urllib3==1.26.16
   fi
+
+  # **Enhanced dependencies with keyring for secure storage**
+  pip3 install --user requests colorama cryptography keyring rich
 fi
 
 # 4) Create enhanced launcher with wipe functionality in ~/bin
@@ -81,11 +81,9 @@ cat > "$LAUNCHER" <<EOF
 
 wipe() {
     echo "== ENCHAT ZERO-TRACE CLEANER =="
-    # 1. Clear terminal scrollback
-    printf '\033[3J\033c\033[H'
+    printf '\\033[3J\\033c\\033[H'
     clear
 
-    # 2. Securely remove .enchat.conf if present
     CONF="\$HOME/.enchat.conf"
     if [ -f "\$CONF" ]; then
         if command -v shred &>/dev/null; then
@@ -96,15 +94,11 @@ wipe() {
         echo "Enchat config wiped."
     fi
 
-    # 3. Remove Enchat lines from shell histories
     for HIST in "\$HOME/.bash_history" "\$HOME/.zsh_history"; do
         [ -f "\$HIST" ] && grep -v 'enchat' "\$HIST" > "\$HIST.tmp" && mv "\$HIST.tmp" "\$HIST"
     done
-
-    # 4. Clear current session history
     history -c 2>/dev/null
-
-    echo "All Enchat traces wiped. Ready for next use."
+    echo "All Enchat traces wiped."
 }
 
 case "\$1" in
@@ -120,15 +114,17 @@ if $USE_VENV; then
         source "$VENV_DIR/bin/activate"
         python3 enchat.py "\$@"
         ;;
-esac
 EOF
 else
   cat >> "$LAUNCHER" <<EOF
         python3 enchat.py "\$@"
         ;;
-esac
 EOF
 fi
+
+cat >> "$LAUNCHER" <<'EOF'
+esac
+EOF
 
 chmod +x "$LAUNCHER"
 
@@ -137,10 +133,10 @@ if ! echo ":$PATH:" | grep -q ":$HOME/bin:"; then
   echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc
   echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
   export PATH="$HOME/bin:$PATH"
-  echo "🔄 Added \$HOME/bin to PATH; run 'source ~/.bashrc' or restart your shell."
+  echo "🔄 Added \$HOME/bin to PATH; run 'source ~/.bashrc' of herstart je je shell."
 fi
 
 echo
 echo "✅ Installation complete!"
-echo "▶️  Start chat: enchat"
-echo "▶️  Wipe traces: enchat wipe"
+echo "▶️ Start chat: enchat"
+echo "▶️ Wipe traces: enchat wipe"

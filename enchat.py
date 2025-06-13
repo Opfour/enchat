@@ -155,18 +155,25 @@ def handle_file_metadata(metadata, sender, buf):
     size = metadata['size']
     total_chunks = metadata['total_chunks']
     
+    # Special case for empty files (0 chunks)
+    is_complete = (total_chunks == 0)
+    
     available_files[file_id] = {
         'metadata': metadata,
         'sender': sender,
         'chunks_received': 0,
         'total_chunks': total_chunks,
-        'complete': False
+        'complete': is_complete
     }
     file_chunks[file_id] = {}
     
     size_mb = size / (1024 * 1024)
     buf.append(("System", f"📎 {sender} shared: {filename} ({size_mb:.1f}MB, {total_chunks} chunks)", False))
-    buf.append(("System", f"   File ID: {file_id} - Use '/download {file_id}' when complete", False))
+    
+    if is_complete:
+        buf.append(("System", f"✅ {filename} ready! Use '/download {file_id}' (empty file)", False))
+    else:
+        buf.append(("System", f"   File ID: {file_id} - Use '/download {file_id}' when complete", False))
     
     if notifications_enabled:
         notify(f"{sender} shared file: {filename}")
@@ -205,18 +212,26 @@ def assemble_file_from_chunks(file_id, f_cipher):
     chunks_dict = file_chunks[file_id]
     
     try:
-        # Sort chunks by number
-        sorted_chunks = [chunks_dict[i] for i in sorted(chunks_dict.keys())]
-        
         temp_path = os.path.join(FILE_TEMP_DIR, f"{file_id}_{metadata['filename']}")
         file_hash = hashlib.sha256()
         
-        with open(temp_path, 'wb') as f:
-            for chunk in sorted_chunks:
-                # Decrypt chunk
-                decrypted_data = f_cipher.decrypt(chunk['data'].encode())
-                file_hash.update(decrypted_data)
-                f.write(decrypted_data)
+        # Special case for empty files (0 chunks)
+        if metadata['total_chunks'] == 0:
+            # Create empty file
+            with open(temp_path, 'wb') as f:
+                pass  # Create empty file
+            # Hash of empty file is hash of empty bytes
+            file_hash.update(b'')
+        else:
+            # Sort chunks by number
+            sorted_chunks = [chunks_dict[i] for i in sorted(chunks_dict.keys())]
+            
+            with open(temp_path, 'wb') as f:
+                for chunk in sorted_chunks:
+                    # Decrypt chunk
+                    decrypted_data = f_cipher.decrypt(chunk['data'].encode())
+                    file_hash.update(decrypted_data)
+                    f.write(decrypted_data)
         
         # Verify file integrity
         if file_hash.hexdigest() != metadata['hash']:

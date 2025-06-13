@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://sudosallie.com/enchatlogo.png" alt="Enchat Logo" width="400">
+  <img src="https://sudodevdante.com/enchatlogo.png" alt="Enchat Logo" width="400">
 </div>
 
 # 🔐 Enchat - Encrypted Under The Radar Chat
@@ -87,7 +87,7 @@ All you need to remember is your room passphrase - Enchat handles all the comple
 
 ```bash
 # Clone the repository
-git clone https://github.com/sudosallie/enchat.git
+git clone https://github.com/sudodevdante/enchat.git
 cd enchat
 
 # Run the installer (inspect install-enchat.sh first if you want)
@@ -104,7 +104,7 @@ The installer provides:
 
 ```bash
 # Clone or download
-git clone https://github.com/sudosallie/enchat.git
+git clone https://github.com/sudodevdante/enchat.git
 cd enchat
 
 # Install dependencies (keyring is optional but recommended)
@@ -146,7 +146,7 @@ Welcome to Enchat! Let's set up your encrypted chat.
 🔐 Encryption passphrase (hidden): ••••••••
 
 🌐 Select a ntfy server:
-  1) Enchat ntfy server (https://enchat.sudosallie.com) - Recommended
+  1) Enchat ntfy server (https://enchat.sudodevdante.com) - Recommended
      - Dedicated server for enchat with generous limits
   2) Default ntfy server (https://ntfy.sh)
      - Public server with rate limits
@@ -160,7 +160,7 @@ Enter choice [1-3] (default: 1): 1
 ### Chat Interface
 
 <div align="center">
-  <img src="https://sudosallie.com/enchat.png" alt="Enchat Interface" width="800">
+  <img src="https://sudodevdante.com/enchat.png" alt="Enchat Interface" width="800">
 </div>
 
 ## 📁 Encrypted File Sharing
@@ -263,7 +263,7 @@ Original File → [Split into 6KB chunks] → [AES-256 encrypt each chunk]
 
 #### **Recommended Usage**
 - **ntfy.sh**: Up to 5MB, occasional use
-- **enchat.sudosallie.com**: Up to 5MB, regular use
+- **enchat.sudodevdante.com**: Up to 5MB, regular use
 - **Self-hosted ntfy**: Up to 25MB+ (configurable)
 
 ### **🛡️ File Sharing Best Practices**
@@ -301,7 +301,7 @@ enchat wipe                                      # Securely remove all traces
 
 Enchat supports multiple ntfy servers:
 
-1. **Dedicated Enchat Server** (enchat.sudosallie.com) - **Default & Recommended**
+1. **Dedicated Enchat Server** (enchat.sudodevdante.com) - **Default & Recommended**
    - Optimized for chat with generous rate limits
    - Best performance and reliability for enchat
 

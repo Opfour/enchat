@@ -26,7 +26,7 @@ except ImportError: KEYRING_AVAILABLE = False
 # ── constants ─────────────────────────────────────────────────────────
 CONF_FILE   = os.path.expanduser("~/.enchat.conf")
 DEFAULT_NTFY= "https://ntfy.sh"
-ENCHAT_NTFY = "https://enchat.sudosallie.com"
+ENCHAT_NTFY = "https://enchat.sudodevdante.com"
 MAX_MSG_LEN = 500
 PING_INTERVAL = 30
 MAX_RETRIES = 3

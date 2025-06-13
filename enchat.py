@@ -900,8 +900,8 @@ def first_run(args):
 def main():
     ap=argparse.ArgumentParser("enchat")
     ap.add_argument("--server"); ap.add_argument("--enchat-server",action="store_true")
-    ap.add_argument("--default-server",action="store_true"); ap.add_argument("--reset",action="store_true")
-    ap.add_argument("command", nargs="?", help="Commands: 'kill' to securely wipe ALL enchat data")
+    ap.add_argument("--default-server",action="store_true"); ap.add_argument("--clear-config",action="store_true")
+    ap.add_argument("command", nargs="?", help="Commands: 'kill' to securely wipe ALL enchat data, 'reset' to clear configuration")
     ns=ap.parse_args()
     
     # Handle special commands first
@@ -909,7 +909,15 @@ def main():
         wipe_all_enchat_data()
         sys.exit()
     
-    if ns.reset and os.path.exists(CONF_FILE):
+    if ns.command == "reset":
+        if os.path.exists(CONF_FILE):
+            os.remove(CONF_FILE)
+            console.print("[green]✅ Configuration cleared[/]")
+        else:
+            console.print("[yellow]ℹ️  No configuration file found[/]")
+        sys.exit()
+    
+    if ns.clear_config and os.path.exists(CONF_FILE):
         os.remove(CONF_FILE); console.print("[green]settings cleared[/]"); sys.exit()
 
     room,nick,secret,server = load_conf()

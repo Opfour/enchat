@@ -15,19 +15,49 @@
 
 ### **How Your Messages Stay Safe**
 - **End-to-end encryption** using AES-256 in CBC mode with HMAC-SHA256 and PBKDF2-based key derivation for enhanced security
-- **Client-side encryption** - messages are encrypted before leaving your device
+- **Automatic session-based encryption** - Each chat session silently generates and uses a unique temporary key
+- **Perfect Forward Secrecy** - When a session ends, its messages become permanently unreadable - even with the passphrase
+- **Double-layer encryption** - Messages are automatically encrypted with both session keys and room-specific keys
+- **Client-side encryption** - All encryption happens on your device before transmission
 - **Server blindness** - ntfy servers only see encrypted blobs, never plaintext
 - **Authenticated encryption** - prevents message tampering and ensures integrity
-- **Strong key derivation** - PBKDF2-HMAC-SHA256 with 100,000 iterations and static salt ensures a robust encryption key from your passphrase
+- **Strong key derivation** - PBKDF2-HMAC-SHA256 with 100,000 iterations and static salt
+- **Seamless key rotation** - New session keys are automatically generated whenever a room becomes empty
+- **Invisible key exchange** - New participants automatically receive encrypted session keys without user interaction
+- **Isolated sessions** - Different passphrases create completely separate chat environments
+- **No stored keys** - Session keys are never saved to disk in plain text
 - **Metadata protection** - usernames, timestamps, and system events are also encrypted
 - **Privacy by design** - no personal information stored or transmitted in plaintext
 
+### **Why Messages Cannot Be Intercepted**
+Even if an attacker:
+- Has the room passphrase
+- Captures all network traffic
+- Compromises the server
+- Gains access to stored files
+
+They still cannot read messages because:
+1. Each message is encrypted with a temporary session key
+2. Session keys only exist during active chat sessions
+3. Session keys are never stored in plain text
+4. When a session ends, its messages become permanently unreadable
+
 ### **Message Flow Security**
 ```
-Your Message → [Encrypt] → Encrypted Blob → ntfy Server → Encrypted Blob → [Decrypt] → Recipient
+Your Message → [Session Key Encrypt] → [Room Key Encrypt] → Encrypted Blob → ntfy Server → Encrypted Blob → [Room Key Decrypt] → [Session Key Decrypt] → Recipient
 ```
 
-The ntfy server acts as a **message relay only** - it cannot decrypt your messages without your passphrase. Even if the server is compromised, your conversations remain secure.
+The ntfy server acts as a **blind message relay** - it cannot decrypt your messages without both:
+- The room passphrase
+- AND the temporary session key (which is automatically managed)
+Even if the server is compromised, your conversations remain secure.
+
+### **User Experience**
+All you need to remember is your room passphrase - Enchat handles all the complex security automatically:
+- Session keys are generated and exchanged invisibly
+- Key rotation happens seamlessly when rooms empty
+- New participants get access automatically when they join
+- No additional passwords or keys to manage
 
 ### **Privacy Guarantees**
 - 🔐 **Zero knowledge** - servers never see message content, usernames, timestamps, or file data

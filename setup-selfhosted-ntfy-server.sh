@@ -123,7 +123,6 @@ log-level: info
 log-file: "/var/log/ntfy/ntfy.log"
 
 # CORS for web access
-enable-web-ui: true
 EOF
 
     # Create Docker Compose file
@@ -254,7 +253,6 @@ log-level: info
 log-file: "/var/log/ntfy/ntfy.log"
 
 # CORS for web access
-enable-web-ui: true
 EOF
 
     # Create systemd service

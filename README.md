@@ -159,21 +159,9 @@ Enter choice [1-3] (default: 1): 1
 
 ### Chat Interface
 
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│🟢 my-secret-room | alice | ntfy.sh                                           │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-[14:32:15] ℹ Joined room 'my-secret-room' • Type /exit to quit, /clear to clear screen
-[14:32:16] ℹ Connected successfully! Ready to chat!
-
-[14:32:20] → bob joined the chat
-[14:32:25] bob: Hey Alice! 👋
-[14:32:30] alice: Hi Bob! How are you?
-[14:32:35] bob: This is completely private!
-
-💬 > 
-```
+<div align="center">
+  <img src="https://sudosallie.com/enchat.png" alt="Enchat Interface" width="800">
+</div>
 
 ## 📁 Encrypted File Sharing
 

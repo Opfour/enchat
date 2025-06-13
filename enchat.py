@@ -431,6 +431,7 @@ class ChatUI:
             Layout(name="input",size=3),
         )
         self.redraw=True; self.last_len=len(buf); self.last_input=""
+        self.last_terminal_size=(0,0)  # Track terminal size changes
 
     # ─ render helpers ─
     def _head(self):
@@ -441,13 +442,28 @@ class ChatUI:
             (f" {self.nick} ","magenta"),
             (" | "+self.server.replace("https://",""),"dim")),style="blue")
     def _body(self):
+        # Calculate available space for messages (terminal height - header - input - panel borders)
+        try:
+            import shutil
+            terminal_height = shutil.get_terminal_size().lines
+            # Reserve space: 3 for header + 3 for input + 4 for panel borders/padding
+            # Ensure minimum of 3 lines for very small terminals
+            available_lines = max(3, terminal_height - 10)
+        except:
+            # Fallback for systems where terminal size detection fails
+            available_lines = 20
+        
+        # Take recent messages that fit in available space
+        # Show newest messages first, limit to available lines
+        messages_to_show = self.buf[-available_lines:] if len(self.buf) > available_lines else self.buf
+        
         t=Text()
-        for u,m,own in self.buf[-100:]:
+        for u,m,own in messages_to_show:
             if u=="System": t.append(f"[SYSTEM] {m}\n",style="yellow")
             else:
                 lab,st=("You","green") if own else (u,"cyan")
                 t.append(f"{lab}: ",style=st); t.append(f"{m}\n")
-        return Panel(t,title=f"Messages ({len(self.buf)})",padding=(0,1))
+        return Panel(t,title=f"Messages ({len(self.buf)}) - showing newest",padding=(0,1))
     def _inp(self):
         entered="".join(current_input)
         txt=Text(f"{self.nick}: ",style="bold green")
@@ -471,11 +487,25 @@ class ChatUI:
 
         with Live(self.layout,refresh_per_second=10,screen=False) as live:
             while True:
+                # Check for buffer changes
                 if len(self.buf)!=self.last_len:
                     self.last_len=len(self.buf); self.redraw=True
+                
+                # Check for input changes
                 curr_in="".join(current_input)
                 if curr_in!=self.last_input:
                     self.last_input=curr_in; self.redraw=True
+                
+                # Check for terminal size changes (for responsive UI)
+                try:
+                    import shutil
+                    current_size = shutil.get_terminal_size()
+                    current_size_tuple = (current_size.lines, current_size.columns)
+                    if current_size_tuple != self.last_terminal_size:
+                        self.last_terminal_size = current_size_tuple
+                        self.redraw = True  # Trigger redraw on terminal resize
+                except:
+                    pass  # Ignore errors in terminal size detection
 
                 if self.redraw:
                     self.layout["header"].update(self._head())

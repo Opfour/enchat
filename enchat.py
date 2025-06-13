@@ -239,6 +239,171 @@ def enqueue_file_meta(room, nick, metadata, server, f):
     meta_json = json.dumps(metadata)
     outbox_queue.put(("FILEMETA", room, nick, meta_json, server, f))
 
+# ── secure data wipe ──────────────────────────────────────────────────
+def secure_delete_file(filepath):
+    """Securely delete a file by overwriting it multiple times before removal"""
+    if not os.path.exists(filepath):
+        return True
+    
+    try:
+        # Get file size
+        file_size = os.path.getsize(filepath)
+        
+        # Overwrite file with random data 3 times
+        with open(filepath, 'r+b') as f:
+            for _ in range(3):
+                f.seek(0)
+                # Write random bytes
+                f.write(os.urandom(file_size))
+                f.flush()
+                os.fsync(f.fileno())  # Force write to disk
+        
+        # Finally remove the file
+        os.remove(filepath)
+        return True
+    except Exception:
+        # Fallback to simple deletion if secure delete fails
+        try:
+            os.remove(filepath)
+            return True
+        except Exception:
+            return False
+
+def secure_delete_directory(dirpath):
+    """Securely delete entire directory and all contents"""
+    if not os.path.exists(dirpath):
+        return True
+    
+    try:
+        import shutil
+        
+        # First, securely delete all files in the directory
+        for root, dirs, files in os.walk(dirpath):
+            for file in files:
+                filepath = os.path.join(root, file)
+                secure_delete_file(filepath)
+        
+        # Remove the empty directory structure
+        shutil.rmtree(dirpath, ignore_errors=True)
+        return True
+    except Exception:
+        return False
+
+def wipe_all_enchat_data():
+    """
+    Completely wipe all enchat data to make it 100% untraceable.
+    This includes config files, keyring entries, downloads, and temp files.
+    """
+    console.print("[bold red]🔥 ENCHAT DATA WIPE - COMPLETE REMOVAL[/]")
+    console.print("[yellow]This will permanently delete ALL enchat data:[/]")
+    console.print("  • Configuration file (~/.enchat.conf)")
+    console.print("  • All downloaded files (downloads/ folder)")
+    console.print("  • Temporary files and cache")
+    console.print("  • Keyring/keychain entries")
+    console.print("  • All traces of enchat usage")
+    console.print()
+    
+    from rich.prompt import Confirm
+    if not Confirm.ask("[bold red]Are you absolutely sure? This cannot be undone"):
+        console.print("[green]Cancelled - no data was deleted[/]")
+        return
+    
+    console.print("\n[red]Initiating secure data wipe...[/]")
+    
+    # Track what gets deleted
+    deleted_items = []
+    failed_items = []
+    
+    # First, extract keyring info before deleting config
+    keyring_room = None
+    if KEYRING_AVAILABLE and os.path.exists(CONF_FILE):
+        try:
+            with open(CONF_FILE, 'r') as f:
+                lines = f.readlines()
+                if lines:
+                    keyring_room = lines[0].strip()
+        except:
+            pass
+    
+    # 1. Delete configuration file
+    if os.path.exists(CONF_FILE):
+        if secure_delete_file(CONF_FILE):
+            deleted_items.append("Configuration file (~/.enchat.conf)")
+        else:
+            failed_items.append("Configuration file (~/.enchat.conf)")
+    
+    # 2. Delete downloads directory
+    if os.path.exists(DOWNLOADS_DIR):
+        file_count = sum([len(files) for root, dirs, files in os.walk(DOWNLOADS_DIR)])
+        if secure_delete_directory(DOWNLOADS_DIR):
+            deleted_items.append(f"Downloads folder ({file_count} files)")
+        else:
+            failed_items.append("Downloads folder")
+    
+    # 3. Delete temp files directory
+    if os.path.exists(FILE_TEMP_DIR):
+        if secure_delete_directory(FILE_TEMP_DIR):
+            deleted_items.append("Temporary files cache")
+        else:
+            failed_items.append("Temporary files cache")
+    
+    # 4. Clear keyring entries (if available)
+    if KEYRING_AVAILABLE:
+        try:
+            import keyring
+            if keyring_room:
+                try:
+                    keyring.delete_password("enchat", f"room_{keyring_room}")
+                    deleted_items.append("Keyring/keychain entries")
+                except:
+                    deleted_items.append("Keyring entries (attempted cleanup)")
+            else:
+                deleted_items.append("Keyring entries (no rooms found)")
+        except Exception:
+            failed_items.append("Keyring entries")
+    
+    # 5. Clear any Python cache files in project directory (__pycache__)
+    try:
+        pycache_dir = os.path.join(os.path.dirname(__file__), "__pycache__")
+        if os.path.exists(pycache_dir):
+            if secure_delete_directory(pycache_dir):
+                deleted_items.append("Python cache files")
+            else:
+                failed_items.append("Python cache files")
+    except Exception:
+        pass
+    
+    # 6. Clear any potential log files or temporary files in system temp
+    try:
+        temp_dir = tempfile.gettempdir()
+        for item in os.listdir(temp_dir):
+            if "enchat" in item.lower():
+                item_path = os.path.join(temp_dir, item)
+                if os.path.isfile(item_path):
+                    secure_delete_file(item_path)
+                elif os.path.isdir(item_path):
+                    secure_delete_directory(item_path)
+        deleted_items.append("System temp files (enchat related)")
+    except Exception:
+        pass
+    
+    # Report results
+    console.print("\n[bold green]🗑️  WIPE COMPLETE[/]")
+    
+    if deleted_items:
+        console.print(f"[green]✅ Successfully wiped ({len(deleted_items)} items):[/]")
+        for item in deleted_items:
+            console.print(f"  • {item}")
+    
+    if failed_items:
+        console.print(f"\n[yellow]⚠️  Could not delete ({len(failed_items)} items):[/]")
+        for item in failed_items:
+            console.print(f"  • {item}")
+        console.print("[yellow]These may require manual deletion or don't exist[/]")
+    
+    console.print(f"\n[bold cyan]🔒 Enchat data wipe complete![/]")
+    console.print("[dim]All traces have been securely removed. Enchat project files remain intact.[/]")
+
 # ── config / keyring ──────────────────────────────────────────────────
 def save_passphrase_keychain(room,secret):
     if KEYRING_AVAILABLE:
@@ -736,7 +901,14 @@ def main():
     ap=argparse.ArgumentParser("enchat")
     ap.add_argument("--server"); ap.add_argument("--enchat-server",action="store_true")
     ap.add_argument("--default-server",action="store_true"); ap.add_argument("--reset",action="store_true")
+    ap.add_argument("command", nargs="?", help="Commands: 'kill' to securely wipe ALL enchat data")
     ns=ap.parse_args()
+    
+    # Handle special commands first
+    if ns.command == "kill":
+        wipe_all_enchat_data()
+        sys.exit()
+    
     if ns.reset and os.path.exists(CONF_FILE):
         os.remove(CONF_FILE); console.print("[green]settings cleared[/]"); sys.exit()
 

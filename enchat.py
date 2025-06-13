@@ -35,9 +35,18 @@ MAX_SEEN    = 500
 BUFFER_LIMIT= 500
 TRIM_STEP   = 100
 
-# File transfer constants
-MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+# File transfer constants - CONFIGURABLE
+MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB (can be increased to 10MB, 25MB, etc.)
 CHUNK_SIZE = 6 * 1024  # 6KB chunks (safe for ntfy)
+# 
+# To allow larger files:
+# MAX_FILE_SIZE = 25 * 1024 * 1024  # 25MB
+# 
+# Consider implications:
+# - Larger files = more memory usage
+# - More chunks = longer transfer time  
+# - ntfy server may have rate limits
+# - Self-hosted ntfy recommended for large files
 FILE_TEMP_DIR = os.path.join(tempfile.gettempdir(), "enchat_files")
 DOWNLOADS_DIR = os.path.join(os.path.dirname(__file__), "downloads")
 

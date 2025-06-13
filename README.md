@@ -30,20 +30,22 @@ Your Message → [Encrypt] → Encrypted Blob → ntfy Server → Encrypted Blob
 The ntfy server acts as a **message relay only** - it cannot decrypt your messages without your passphrase. Even if the server is compromised, your conversations remain secure.
 
 ### **Privacy Guarantees**
-- 🔐 **Zero knowledge** - servers never see message content, usernames, or timestamps
+- 🔐 **Zero knowledge** - servers never see message content, usernames, timestamps, or file data
 - 🎭 **Anonymous** - no accounts or personal information required
-- 🛡️ **Metadata protection** - join/leave events and system messages encrypted
-- 🧹 **Clean exit** - secure wipe removes all traces
-- 📱 **Secure notifications** - desktop alerts never show message content
+- 🛡️ **Metadata protection** - join/leave events, system messages, and filenames encrypted
+- 🧹 **Clean exit** - secure wipe removes all traces including downloaded files
+- 📱 **Secure notifications** - desktop alerts never show message or file content
+- 📁 **File privacy** - file transfers use same AES-256 encryption as messages
 
 ## ✨ Features
 
 - **Real-time encrypted chat** with timestamps and status indicators
+- **🔒 Encrypted file sharing** with chunked transfer up to 5MB per file
 - **Multiple server options** including dedicated enchat server
 - **Self-hosted ntfy support** for complete infrastructure control
 - **Auto-reconnection** with smart retry logic
 - **Desktop notifications** (Linux, macOS)
-- **Command system** (`/help`, `/clear`, `/exit`, `/server`, `/who`)
+- **Command system** (`/help`, `/clear`, `/exit`, `/server`, `/who`, `/share`, `/files`, `/download`)
 - **Smart input handling** and message validation
 - **Cross-platform** terminal support
 
@@ -143,6 +145,127 @@ Enter choice [1-3] (default: 1): 1
 💬 > 
 ```
 
+## 📁 Encrypted File Sharing
+
+Enchat supports **secure, end-to-end encrypted file transfer** using the same AES-256 encryption as your messages. Share documents, images, code, and any file type up to 5MB with complete privacy.
+
+### **🔒 File Transfer Security**
+- **End-to-end encryption** - Files are encrypted into 6KB chunks before transmission
+- **Zero server knowledge** - ntfy servers only see encrypted blobs, never file content or names
+- **Integrity verification** - SHA256 hash verification ensures perfect file reconstruction
+- **Directory traversal protection** - Filenames are sanitized to prevent malicious path injection
+- **Secure cleanup** - Temporary files are automatically removed after download
+
+### **📋 File Sharing Commands**
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `/share <filepath>` | Upload and share a file | `/share ~/document.pdf` |
+| `/files` | List available files for download | `/files` |
+| `/download <file_id>` | Download a file to `downloads/` folder | `/download a1b2c3d4` |
+
+### **🚀 File Sharing Workflow**
+
+#### **1. Upload a File**
+```bash
+💬 > /share ~/presentation.pdf
+🔍 Preparing to share: /Users/alice/presentation.pdf
+📤 Sharing: presentation.pdf (2.1MB, 347 chunks)
+   File ID: a1b2c3d4 (also in your /files for reference)
+📤 Upload progress: 10% (35/347)
+📤 Upload progress: 50% (174/347)
+📤 Upload progress: 100% (347/347)
+✅ Upload complete: presentation.pdf
+```
+
+#### **2. View Available Files**
+```bash
+💬 > /files
+📂 AVAILABLE FILES (2)
+  a1b2c3d4: presentation.pdf (2.1MB) from alice (you) - ✅ Ready
+  x7y9z2w5: report.docx (0.5MB) from bob - ✅ Ready
+```
+
+#### **3. Download a File**
+```bash
+💬 > /download a1b2c3d4
+✅ Downloaded: presentation.pdf (2.1MB)
+📁 Saved to: downloads/presentation.pdf
+```
+
+### **📊 File Transfer Specifications**
+
+| **Specification** | **Limit/Details** |
+|-------------------|-------------------|
+| **Maximum file size** | **5MB per file** |
+| **Supported file types** | **All types** (binary safe) |
+| **Chunk size** | **6KB** (optimal for ntfy) |
+| **Concurrent transfers** | **100+ files** (RAM limited) |
+| **Download location** | **`downloads/` folder** |
+| **File name conflicts** | **Auto-rename** (`file_1.txt`) |
+
+### **🗂️ Supported File Types**
+
+Enchat's binary-safe encryption supports **all file types**:
+
+- **📄 Documents**: PDF, DOCX, TXT, MD, RTF
+- **🖼️ Images**: JPG, PNG, GIF, SVG, BMP, TIFF
+- **🎵 Audio**: MP3, WAV, FLAC, M4A, OGG
+- **🎬 Video**: MP4, AVI, MKV, MOV, WMV
+- **💾 Archives**: ZIP, TAR.GZ, RAR, 7Z
+- **💻 Code**: PY, JS, CPP, JAVA, GO, RS
+- **📊 Data**: JSON, CSV, XML, SQL, YAML
+- **⚙️ Executables**: EXE, APP, DEB, DMG, MSI
+
+### **🔧 File Transfer Security Details**
+
+#### **Encryption Process**
+```
+Original File → [Split into 6KB chunks] → [AES-256 encrypt each chunk] 
+→ [Send via ntfy] → [Receive chunks] → [Decrypt chunks] → [Verify SHA256] 
+→ [Reconstruct file] → [Save to downloads/]
+```
+
+#### **Security Guarantees**
+- ✅ **Server blindness** - ntfy servers cannot decrypt file content
+- ✅ **Metadata protection** - filenames encrypted in transit
+- ✅ **Integrity verification** - SHA256 hash prevents corruption
+- ✅ **Path injection protection** - filenames sanitized against `../../../` attacks
+- ✅ **Memory cleanup** - chunks removed from memory after download
+- ✅ **Temp file cleanup** - secure removal of temporary files
+
+### **⚡ Performance & Limits**
+
+#### **Transfer Speed**
+- **Small files (< 1MB)**: ~10-20 seconds
+- **Medium files (1-3MB)**: ~30-60 seconds  
+- **Large files (3-5MB)**: ~1-3 minutes
+
+*Speed depends on ntfy server limits and network connection*
+
+#### **Recommended Usage**
+- **ntfy.sh**: Up to 5MB, occasional use
+- **enchat.sudosallie.com**: Up to 5MB, regular use
+- **Self-hosted ntfy**: Up to 25MB+ (configurable)
+
+### **🛡️ File Sharing Best Practices**
+
+✅ **Security:**
+- Only share files with trusted room participants
+- Verify file integrity after download (files include SHA256 verification)
+- Use strong room passphrases when sharing sensitive files
+- Consider self-hosting ntfy for highly sensitive files
+
+✅ **Performance:**
+- Keep files under 5MB for optimal transfer speed
+- Use file compression (ZIP) for multiple small files
+- Avoid sharing files during high network congestion
+
+⚠️ **Important Notes:**
+- Files are stored in memory during transfer - avoid sharing too many large files simultaneously
+- Downloaded files go to `downloads/` folder and are excluded from git
+- File transfers use the same encryption as messages - same security level
+
 ## 🛠️ Configuration
 
 ### Command Line Options
@@ -186,6 +309,10 @@ You can select your server during initial setup or use command line options to s
 | `/stats` | Session statistics and encryption info |
 | `/security` | Detailed security and privacy overview |
 | `/server` | Display current server information |
+| `/notifications` | Toggle desktop notifications on/off |
+| `/share <filepath>` | Share a file (up to 5MB, all types supported) |
+| `/files` | List available files for download |
+| `/download <file_id>` | Download a file to downloads/ folder |
 
 ### Self-Hosted ntfy
 
@@ -252,6 +379,7 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 - **Dependencies:** `requests`, `colorama`, `cryptography`
 - **Optional:** `keyring` (for secure passphrase storage in system keychain)
 - **Platforms:** Linux, macOS, Windows (full feature parity across all platforms)
+- **Storage:** ~10MB free space for `downloads/` folder (auto-created, git-ignored)
 
 ## 🐛 Troubleshooting
 
@@ -274,11 +402,18 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 - Update terminal emulator for proper color support
 - **Windows:** Use Windows Terminal or PowerShell for best experience
 
+**File Transfer Issues:**
+- Large file transfers may take several minutes - be patient
+- If upload fails, check file size (max 5MB) and file permissions
+- Files are saved to `downloads/` folder in the enchat directory
+- For transfer errors, try again or check server connectivity with `/server`
+
 **Windows-Specific:**
 - Run installer with: `powershell -ExecutionPolicy Bypass -File install-enchat.ps1`
 - Toast notifications require Windows 10 or later
 - Use Windows Terminal for optimal Unicode/color support
 - PowerShell history cleaning happens automatically with `enchat wipe`
+- File paths: Use forward slashes or escape backslashes: `/share C:/file.txt` or `/share C:\\file.txt`
 
 ## 📄 License
 

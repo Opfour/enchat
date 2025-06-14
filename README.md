@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://sudodevdante.com/enchatlogo.png" alt="Enchat Logo" width="400">
+  <img src="https://sudosallie.com.com/enchatlogo.png" alt="Enchat Logo" width="400">
 </div>
 
 # 🔐 Enchat - Encrypted Under The Radar Chat
@@ -160,7 +160,7 @@ Enter choice [1-3] (default: 1): 1
 ### Chat Interface
 
 <div align="center">
-  <img src="https://sudodevdante.com/enchat.png" alt="Enchat Interface" width="800">
+  <img src="https://sudosallie.com/enchat.png" alt="Enchat Interface" width="800">
 </div>
 
 ## 📁 Encrypted File Sharing

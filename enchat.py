@@ -20,13 +20,16 @@ from rich.prompt import Prompt
 from rich.text import Text
 from rich.align import Align
 
+# — local —
+import session_key
+
 try: import keyring; KEYRING_AVAILABLE = True        # type: ignore
 except ImportError: KEYRING_AVAILABLE = False
 
 # ── constants ─────────────────────────────────────────────────────────
 CONF_FILE   = os.path.expanduser("~/.enchat.conf")
 DEFAULT_NTFY= "https://ntfy.sh"
-ENCHAT_NTFY = "https://enchat.sudodevdante.com"
+ENCHAT_NTFY = "https://enchat.sudosallie.com"
 MAX_MSG_LEN = 500
 PING_INTERVAL = 30
 MAX_RETRIES = 3
@@ -473,14 +476,50 @@ def outbox_worker(stop_evt:threading.Event):
         except queue.Empty:
             continue
         
+        # Check if we need to rotate session key
+        if session_key.should_rotate_key(room):
+            new_key = session_key.generate_session_key()
+            session_key.set_session_key(room, new_key)
+            # Broadcast new session key
+            encrypted_key = session_key.encrypt_session_key(new_key, f)
+            body = f"SESSIONKEY:{encrypted_key}"
+            url = f"{server}/{room}"
+            try:
+                session.post(url, data=body, timeout=15)
+            except Exception:
+                pass
+
+        # Get current session key
+        current_key = session_key.get_session_key(room)
+        if not current_key:
+            current_key = session_key.generate_session_key()
+            session_key.set_session_key(room, current_key)
+            # Broadcast new session key
+            encrypted_key = session_key.encrypt_session_key(current_key, f)
+            body = f"SESSIONKEY:{encrypted_key}"
+            url = f"{server}/{room}"
+            try:
+                session.post(url, data=body, timeout=15)
+            except Exception:
+                pass
+
+        # Double encrypt: first with session key, then with room key
         if kind=="MSG":
-            body = f"MSG:{encrypt(f'{int(time.time())}|{nick}|{payload}',f)}"
+            msg = f'{int(time.time())}|{nick}|{payload}'
+            session_encrypted = session_key.encrypt_with_session(msg, current_key)
+            body = f"MSG:{encrypt(session_encrypted, f)}"
         elif kind=="SYS":
-            body = f"SYS:{encrypt(f'{int(time.time())}|{nick}|SYSTEM:{payload}',f)}"
+            msg = f'{int(time.time())}|{nick}|SYSTEM:{payload}'
+            session_encrypted = session_key.encrypt_with_session(msg, current_key)
+            body = f"SYS:{encrypt(session_encrypted, f)}"
         elif kind=="FILEMETA":
-            body = f"FILEMETA:{encrypt(f'{int(time.time())}|{nick}|{payload}',f)}"
+            msg = f'{int(time.time())}|{nick}|{payload}'
+            session_encrypted = session_key.encrypt_with_session(msg, current_key)
+            body = f"FILEMETA:{encrypt(session_encrypted, f)}"
         elif kind=="FILECHUNK":
-            body = f"FILECHUNK:{encrypt(f'{int(time.time())}|{nick}|{payload}',f)}"
+            msg = f'{int(time.time())}|{nick}|{payload}'
+            session_encrypted = session_key.encrypt_with_session(msg, current_key)
+            body = f"FILECHUNK:{encrypt(session_encrypted, f)}"
         else:
             continue
             
@@ -515,6 +554,15 @@ def listener(room,nick,f,server,buf,stop):
                         h=hashlib.sha256(raw.encode()).hexdigest()
                         if h in seen: continue
                         seen.add(h); seen=set(list(seen)[-MAX_SEEN:])
+                        
+                        # Handle session key updates
+                        if raw.startswith("SESSIONKEY:"):
+                            encrypted_key = raw[11:]  # Skip "SESSIONKEY:"
+                            new_key = session_key.decrypt_session_key(encrypted_key, f)
+                            if new_key:
+                                session_key.set_session_key(room, new_key)
+                            continue
+                            
                         if not raw.startswith(("SYS:","MSG:","FILEMETA:","FILECHUNK:")): continue
                         
                         if raw.startswith("FILEMETA:"):
@@ -524,9 +572,19 @@ def listener(room,nick,f,server,buf,stop):
                         else:
                             kind,enc=raw[:4],raw[4:]
                             
-                        plain=decrypt(enc,f); 
+                        # First decrypt with room key
+                        plain = decrypt(enc, f)
                         if not plain: continue
-                        ts,sender,content=plain.split("|",2)
+                        
+                        # Then decrypt with session key
+                        current_key = session_key.get_session_key(room)
+                        if not current_key:
+                            continue  # No valid session key yet
+                            
+                        msg = session_key.decrypt_with_session(plain, current_key)
+                        if not msg: continue
+                        
+                        ts,sender,content=msg.split("|",2)
                         
                         if kind=="SYS:":
                             evt=content.replace("SYSTEM:","")

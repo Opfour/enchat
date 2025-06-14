@@ -780,21 +780,52 @@ class ChatUI:
                     self.buf.append(("System",f"Sent {mine}, Recv {tot-mine}, Total {tot}",False))
                     trim(self.buf); continue
                 if line=="/security":
-                    self.buf.append(("System","AES-256-Fernet, PBKDF2-SHA256 (100k)",False))
-                    trim(self.buf); continue
-                if line=="/server":
-                    try:
-                        # Test server connectivity
-                        test_resp = requests.get(f"{self.server}/v1/health", timeout=5)
-                        status = "🟢 Online" if test_resp.status_code == 200 else f"🟡 Status {test_resp.status_code}"
-                    except Exception:
-                        status = "🔴 Offline/Unreachable"
+                    self.buf.append(("System","=== SECURITY STATUS ===",False))
+                    self.buf.append(("System","🔒 Base Encryption: AES-256-Fernet, PBKDF2-SHA256 (100k)",False))
                     
-                    self.buf.append(("System", f"=== SERVER INFO ===", False))
-                    self.buf.append(("System", f"URL: {self.server}", False))
-                    self.buf.append(("System", f"Status: {status}", False))
-                    self.buf.append(("System", f"Room: {self.room}", False))
-                    trim(self.buf); continue
+                    # Session key status
+                    current_key = session_key.get_session_key(self.room)
+                    if current_key:
+                        key_age = int(time.time() - session_key._active_sessions[self.room][1])
+                        rotation_in = session_key.SESSION_KEY_ROTATION_INTERVAL - key_age
+                        self.buf.append(("System",f"🔑 Forward Secrecy: Active",False))
+                        self.buf.append(("System",f"  • Session key age: {key_age}s",False))
+                        self.buf.append(("System",f"  • Next rotation in: {rotation_in}s",False))
+                    else:
+                        self.buf.append(("System","🔑 Forward Secrecy: Waiting for session key...",False))
+                    
+                    # Room security
+                    self.buf.append(("System",f"🏠 Room: {self.room}",False))
+                    self.buf.append(("System",f"  • Double encryption: Room key + Session key",False))
+                    self.buf.append(("System",f"  • Perfect Forward Secrecy: Enabled",False))
+                    self.buf.append(("System",f"  • Key rotation interval: {session_key.SESSION_KEY_ROTATION_INTERVAL}s",False))
+                    
+                    # File transfer security
+                    self.buf.append(("System","📁 File Transfer Security:",False))
+                    self.buf.append(("System",f"  • End-to-end encrypted chunks: {CHUNK_SIZE//1024}KB",False))
+                    self.buf.append(("System",f"  • SHA256 integrity verification",False))
+                    self.buf.append(("System",f"  • Max file size: {MAX_FILE_SIZE//1024//1024}MB",False))
+                    
+                    # System security
+                    self.buf.append(("System","🛡️ System Security:",False))
+                    self.buf.append(("System",f"  • Memory-only session keys",False))
+                    self.buf.append(("System",f"  • Zero server knowledge",False))
+                    if KEYRING_AVAILABLE:
+                        self.buf.append(("System",f"  • Secure keyring available: Yes",False))
+                    else:
+                        self.buf.append(("System",f"  • Secure keyring available: No",False))
+                    
+                    # Server info
+                    self.buf.append(("System","🌐 Server:",False))
+                    if self.server == ENCHAT_NTFY:
+                        self.buf.append(("System",f"  • Using dedicated Enchat server",False))
+                    elif self.server == DEFAULT_NTFY:
+                        self.buf.append(("System",f"  • Using public ntfy.sh server",False))
+                    else:
+                        self.buf.append(("System",f"  • Using custom server: {self.server}",False))
+                    
+                    trim(self.buf)
+                    continue
                 if line=="/notifications":
                     global notifications_enabled
                     notifications_enabled = not notifications_enabled
@@ -939,6 +970,20 @@ class ChatUI:
                     
                     self.buf.append(("System", f"✅ Upload complete: {filename}", False))
                     trim(self.buf); continue
+                if line.startswith("/server"):
+                    try:
+                        # Test server connectivity
+                        test_resp = requests.get(f"{self.server}/v1/health", timeout=5)
+                        status = "🟢 Online" if test_resp.status_code == 200 else f"🟡 Status {test_resp.status_code}"
+                    except Exception:
+                        status = "🔴 Offline/Unreachable"
+                    
+                    self.buf.append(("System", f"=== SERVER INFO ===", False))
+                    self.buf.append(("System", f"URL: {self.server}", False))
+                    self.buf.append(("System", f"Status: {status}", False))
+                    self.buf.append(("System", f"Room: {self.room}", False))
+                    trim(self.buf)
+                    continue
                 if line.startswith("/"):
                     self.buf.append(("System",f"Unknown command {line}",False))
                     trim(self.buf); continue

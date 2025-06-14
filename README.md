@@ -3,8 +3,6 @@
 </div>
 
 # 🔐 Enchat - Encrypted Under The Radar Chat
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 
 **Enchat** brings **end-to-end encrypted communication** directly to your terminal, enabling completely private conversations without corporate surveillance or data harvesting. Chat securely with colleagues, friends, or team members knowing that your messages are **cryptographically protected** and invisible to servers, governments, and eavesdroppers.
@@ -435,7 +433,14 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) for details.
+Copyright © 2025 sudodevdante All rights reserved.
+
+Permission is granted to any user to install and execute this Software
+for internal purposes only. Redistribution, modification, decompilation
+or any other use is prohibited without prior written consent of the
+copyright holder.
+
+THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND…
 
 ## 🙏 Acknowledgments
 

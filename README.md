@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://sudosallie.com.com/enchatlogo.png" alt="Enchat Logo" width="400">
+  <img src="https://sudosallie.com/enchatlogo.png" alt="Enchat Logo" width="400">
 </div>
 
 # 🔐 Enchat - Encrypted Under The Radar Chat

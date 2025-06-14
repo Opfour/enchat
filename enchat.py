@@ -3,10 +3,10 @@
 Route B • 2025-06-15  CHUNK 1 / 2
 """
 # — stdlib —
-import argparse, base64, hashlib, os, queue, select, signal, subprocess, sys, threading, time, tempfile
+import argparse, base64, hashlib, os, queue, select, signal, subprocess, sys, threading, time, tempfile, glob
 from getpass import getpass
 from shutil import which
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Dict, Set
 # — 3rd-party —
 import requests
 from cryptography.fernet import Fernet, InvalidToken
@@ -19,6 +19,12 @@ from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.text import Text
 from rich.align import Align
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskID
+import logging
+import platform
+import ctypes
+import gc
+import secrets
 
 # — local —
 import session_key
@@ -258,169 +264,732 @@ def enqueue_file_meta(room, nick, metadata, server, f):
     outbox_queue.put(("FILEMETA", room, nick, meta_json, server, f))
 
 # ── secure data wipe ──────────────────────────────────────────────────
+def get_storage_type(filepath):
+    """
+    Detect if file is on SSD or HDD.
+    Returns: ("ssd"|"hdd"|"unknown", mount_point)
+    """
+    try:
+        abs_path = os.path.abspath(filepath)
+        if sys.platform == "darwin":
+            # macOS: use diskutil to get mount point
+            mount_point = subprocess.run(
+                ['df', abs_path], 
+                capture_output=True, 
+                text=True
+            ).stdout.split('\n')[1].split()[-1]
+            
+            # Get device info
+            result = subprocess.run(
+                ['diskutil', 'info', mount_point], 
+                capture_output=True, 
+                text=True
+            ).stdout.lower()
+            
+            if "solid state" in result:
+                return "ssd", mount_point
+            elif "hard drive" in result:
+                return "hdd", mount_point
+                
+        elif sys.platform == "linux":
+            # Get device from mount point
+            mount_point = subprocess.run(
+                ['df', abs_path], 
+                capture_output=True, 
+                text=True
+            ).stdout.split('\n')[1].split()[-1]
+            
+            # Get device name
+            device = subprocess.run(
+                ['findmnt', '-n', '-o', 'SOURCE', mount_point],
+                capture_output=True,
+                text=True
+            ).stdout.strip()
+            
+            # Remove partition number if any
+            device = ''.join([c for c in device if not c.isdigit()])
+            
+            # Check rotational flag
+            try:
+                with open(f'/sys/block/{os.path.basename(device)}/queue/rotational', 'r') as f:
+                    if f.read().strip() == '0':
+                        return "ssd", mount_point
+                    return "hdd", mount_point
+            except:
+                pass
+                
+    except Exception:
+        pass
+    return "unknown", os.path.dirname(abs_path)
+
 def secure_delete_file(filepath):
-    """Securely delete a file by overwriting it multiple times before removal"""
+    """
+    Best-effort secure file deletion based on storage type and platform.
+    Returns (success, method_used, warnings)
+    """
     if not os.path.exists(filepath):
-        return True
+        return True, "none", []
+    
+    warnings = []
+    storage_type, mount_point = get_storage_type(filepath)
+    
+    if storage_type == "ssd":
+        warnings.append("File is on SSD - secure deletion limited due to wear leveling")
     
     try:
-        # Get file size
-        file_size = os.path.getsize(filepath)
-        
-        # Overwrite file with random data 3 times
-        with open(filepath, 'r+b') as f:
-            for _ in range(3):
-                f.seek(0)
-                # Write random bytes
-                f.write(os.urandom(file_size))
+        # Platform-specific secure deletion
+        if sys.platform == "darwin":  # macOS
+            # Use built-in rm with overwrite
+            with open(filepath, 'wb') as f:
+                size = os.path.getsize(filepath)
+                f.write(os.urandom(size))
                 f.flush()
-                os.fsync(f.fileno())  # Force write to disk
-        
-        # Finally remove the file
-        os.remove(filepath)
-        return True
-    except Exception:
-        # Fallback to simple deletion if secure delete fails
-        try:
+                os.fsync(f.fileno())
             os.remove(filepath)
-            return True
-        except Exception:
-            return False
+            return True, "macos_overwrite", warnings
+                
+        elif sys.platform == "linux":
+            # Try shred without sudo
+            if os.path.exists("/usr/bin/shred"):
+                result = subprocess.run(
+                    ['shred', '-u', '-n', '1', filepath],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    return True, "linux_shred", warnings
+                warnings.append(f"shred failed: {result.stderr}")
+                
+        elif sys.platform == "win32":
+            # Windows: Use cipher (built-in) for overwrite
+            result = subprocess.run(
+                ['cipher', '/w:' + os.path.dirname(filepath)],
+                capture_output=True,
+                text=True
+            )
+            if result.returncode == 0:
+                os.remove(filepath)
+                return True, "windows_cipher", warnings
+            warnings.append(f"cipher failed: {result.stderr}")
+                
+        # Cross-platform secure deletion
+        warnings.append("Using cross-platform secure deletion")
+        
+        # 1. Get original file permissions and size
+        size = os.path.getsize(filepath)
+        
+        # 2. Three-pass overwrite
+        for i in range(3):
+            try:
+                with open(filepath, 'wb') as f:
+                    if i == 0:  # First pass: random data
+                        f.write(os.urandom(size))
+                    elif i == 1:  # Second pass: ones
+                        f.write(b'\xFF' * size)
+                    else:  # Third pass: zeros
+                        f.write(b'\x00' * size)
+                    f.flush()
+                    os.fsync(f.fileno())
+            except Exception as e:
+                warnings.append(f"Pass {i+1} failed: {str(e)}")
+                break
+                
+        # 3. Delete file
+        os.remove(filepath)
+        
+        # 4. Sync directory to ensure changes are written
+        try:
+            dirfd = os.open(os.path.dirname(filepath), os.O_DIRECTORY)
+            os.fsync(dirfd)
+            os.close(dirfd)
+        except Exception as e:
+            warnings.append(f"Directory sync failed: {str(e)}")
+            
+        return True, "cross_platform", warnings
+            
+    except Exception as e:
+        warnings.append(f"Secure deletion failed: {str(e)}")
+        try:
+            # Fallback to normal deletion
+            os.remove(filepath)
+            warnings.append("Fell back to normal file deletion")
+            return True, "normal_delete", warnings
+        except Exception as e:
+            warnings.append(f"Normal deletion also failed: {str(e)}")
+            return False, "failed", warnings
 
 def secure_delete_directory(dirpath):
-    """Securely delete entire directory and all contents"""
+    """
+    Recursively delete a directory and its contents securely.
+    Returns (success, methods_used, warnings)
+    """
     if not os.path.exists(dirpath):
-        return True
+        return True, [], []
+        
+    all_warnings = []
+    methods_used = set()
+    success = True
     
     try:
-        import shutil
-        
-        # First, securely delete all files in the directory
-        for root, dirs, files in os.walk(dirpath):
-            for file in files:
-                filepath = os.path.join(root, file)
-                secure_delete_file(filepath)
-        
-        # Remove the empty directory structure
-        shutil.rmtree(dirpath, ignore_errors=True)
-        return True
-    except Exception:
-        return False
-
-def wipe_all_enchat_data():
-    """
-    Completely wipe all enchat data to make it 100% untraceable.
-    This includes config files, keyring entries, downloads, and temp files.
-    """
-    console.print("[bold red]🔥 ENCHAT DATA WIPE - COMPLETE REMOVAL[/]")
-    console.print("[yellow]This will permanently delete ALL enchat data:[/]")
-    console.print("  • Configuration file (~/.enchat.conf)")
-    console.print("  • All downloaded files (downloads/ folder)")
-    console.print("  • Temporary files and cache")
-    console.print("  • Keyring/keychain entries")
-    console.print("  • All traces of enchat usage")
-    console.print()
-    
-    from rich.prompt import Confirm
-    if not Confirm.ask("[bold red]Are you absolutely sure? This cannot be undone"):
-        console.print("[green]Cancelled - no data was deleted[/]")
-        return
-    
-    console.print("\n[red]Initiating secure data wipe...[/]")
-    
-    # Track what gets deleted
-    deleted_items = []
-    failed_items = []
-    
-    # First, extract keyring info before deleting config
-    keyring_room = None
-    if KEYRING_AVAILABLE and os.path.exists(CONF_FILE):
+        for root, dirs, files in os.walk(dirpath, topdown=False):
+            # Delete files first
+            for name in files:
+                filepath = os.path.join(root, name)
+                file_success, method, warnings = secure_delete_file(filepath)
+                if not file_success:
+                    success = False
+                methods_used.add(method)
+                all_warnings.extend(warnings)
+                
+            # Then remove empty directories
+            for name in dirs:
+                try:
+                    os.rmdir(os.path.join(root, name))
+                except Exception as e:
+                    all_warnings.append(f"Failed to remove directory {name}: {str(e)}")
+                    success = False
+                    
+        # Finally remove the root directory
         try:
-            with open(CONF_FILE, 'r') as f:
+            os.rmdir(dirpath)
+        except Exception as e:
+            all_warnings.append(f"Failed to remove root directory: {str(e)}")
+            success = False
+            
+        return success, list(methods_used), all_warnings
+        
+    except Exception as e:
+        all_warnings.append(f"Directory deletion failed: {str(e)}")
+        return False, list(methods_used), all_warnings
+
+def get_enchat_data_locations():
+    """
+    Returns a list of tuples (path, description, risk_level) for all Enchat data locations
+    risk_level: 1 = low, 2 = medium, 3 = high (sensitive data)
+    """
+    locations = []
+    
+    # High-risk locations (contain keys/credentials)
+    config_path = os.path.expanduser("~/.enchat.conf")
+    if os.path.exists(config_path):
+        locations.append((config_path, "Configuration file", 3))
+    
+    keychain_file = os.path.expanduser("~/Library/Keychains/login.keychain-db")
+    if os.path.exists(keychain_file):
+        locations.append((keychain_file, "System keychain", 3))
+    
+    # Medium-risk locations (may contain message content)
+    downloads_dir = os.path.join(os.path.expanduser("~"), "Downloads", "enchat")
+    if os.path.exists(downloads_dir):
+        locations.append((downloads_dir, "Downloads folder", 2))
+    
+    local_storage = os.path.join(os.path.expanduser("~"), ".local", "share", "enchat")
+    if os.path.exists(local_storage):
+        locations.append((local_storage, "Local storage", 2))
+    
+    # Low-risk locations (temporary/cache files)
+    temp_patterns = [
+        os.path.join(tempfile.gettempdir(), "enchat-*"),
+        os.path.join(tempfile.gettempdir(), "tmp-enchat-*")
+    ]
+    for pattern in temp_patterns:
+        for path in glob.glob(pattern):
+            locations.append((path, "Temporary file", 1))
+    
+    cache_patterns = [
+        os.path.join(os.path.dirname(__file__), "__pycache__"),
+        os.path.join(os.path.dirname(__file__), "*.pyc"),
+        os.path.join(os.path.dirname(__file__), "*.pyo")
+    ]
+    for pattern in cache_patterns:
+        for path in glob.glob(pattern):
+            locations.append((path, "Python cache", 1))
+    
+    return locations
+
+def wipe_keychain_entries():
+    """
+    Remove only Enchat-related entries from system keychain/keyring
+    Returns (success, warnings)
+    """
+    warnings = []
+    try:
+        if sys.platform == "darwin":
+            # macOS: List and remove only Enchat entries
+            # First, find all Enchat entries
+            result = subprocess.run([
+                'security', 'find-generic-password', '-a', 'enchat'
+            ], capture_output=True, text=True)
+            
+            # Extract service names from the output
+            services = []
+            for line in result.stderr.split('\n'):
+                if 'service=' in line:
+                    service = line.split('service=')[1].strip('"')
+                    if 'enchat' in service.lower():
+                        services.append(service)
+            
+            # Remove each Enchat entry
+            for service in services:
+                subprocess.run([
+                    'security', 'delete-generic-password',
+                    '-a', 'enchat',
+                    '-s', service
+                ], capture_output=True)
+                
+        elif sys.platform == "linux":
+            # Try common Linux keyrings
+            for cmd in ['secret-tool', 'gnome-keyring-daemon']:
+                try:
+                    # List and remove only Enchat entries
+                    if cmd == 'secret-tool':
+                        # First, list all items
+                        result = subprocess.run([
+                            'secret-tool', 'search', 'application', 'enchat'
+                        ], capture_output=True, text=True)
+                        
+                        # Remove each Enchat entry
+                        for line in result.stdout.split('\n'):
+                            if line.strip():
+                                subprocess.run([
+                                    'secret-tool', 'clear',
+                                    'application', 'enchat',
+                                    'service', line.strip()
+                                ], capture_output=True)
+                    else:
+                        # For gnome-keyring, only clear Enchat entries
+                        subprocess.run([
+                            cmd, '--remove="enchat:*"'
+                        ], capture_output=True)
+                except:
+                    pass
+                    
+        elif sys.platform == "win32":
+            # Windows: Only remove Enchat credentials
+            try:
+                # List credentials
+                result = subprocess.run([
+                    'cmdkey', '/list'
+                ], capture_output=True, text=True)
+                
+                # Find and remove only Enchat entries
+                for line in result.stdout.split('\n'):
+                    if 'enchat' in line.lower():
+                        target = line.split('Target: ')[1].strip() if 'Target: ' in line else None
+                        if target:
+                            subprocess.run([
+                                'cmdkey', '/delete:' + target
+                            ], capture_output=True)
+            except Exception as e:
+                warnings.append(f"Failed to clear Windows credentials: {str(e)}")
+                
+    except Exception as e:
+        warnings.append(f"Failed to clear keychain entries: {str(e)}")
+    
+    return len(warnings) == 0, warnings
+
+def clear_shell_history():
+    """
+    Clear Enchat-related entries from shell history
+    Returns (success, warnings)
+    """
+    warnings = []
+    try:
+        # Determine shell and history file
+        shell = os.environ.get('SHELL', '')
+        if 'zsh' in shell:
+            history_file = os.path.expanduser('~/.zsh_history')
+        elif 'bash' in shell:
+            history_file = os.path.expanduser('~/.bash_history')
+        else:
+            return False, ["Unsupported shell for history clearing"]
+            
+        if os.path.exists(history_file):
+            # Read history file
+            with open(history_file, 'r') as f:
                 lines = f.readlines()
-                if lines:
-                    keyring_room = lines[0].strip()
+            
+            # Filter out Enchat-related commands
+            new_lines = [l for l in lines if 'enchat' not in l.lower()]
+            
+            # Write back if changed
+            if len(new_lines) != len(lines):
+                with open(history_file, 'w') as f:
+                    f.writelines(new_lines)
+                return True, []
+                
+    except Exception as e:
+        warnings.append(f"Failed to clear shell history: {str(e)}")
+    
+    return False, warnings
+
+def clear_system_logs():
+    """
+    Clear Enchat-related system logs without requiring sudo
+    Returns (success, warnings)
+    """
+    warnings = []
+    try:
+        if sys.platform == "darwin":
+            # Use user-level log show to find Enchat entries
+            subprocess.run([
+                'log', 'show', '--predicate', 'process == "enchat"', 
+                '--style', 'compact', '--last', '24h'
+            ], capture_output=True)
+            warnings.append("System logs may retain entries - full clear requires admin rights")
+        elif sys.platform == "linux":
+            # Try user-level journal clear
+            subprocess.run([
+                'journalctl', '--user', '--vacuum-time=1s'
+            ], capture_output=True)
+            warnings.append("System-wide logs may retain entries - full clear requires admin rights")
+    except Exception as e:
+        warnings.append(f"Could not access system logs: {str(e)}")
+    return True, warnings
+
+def clear_clipboard():
+    """
+    Clear system clipboard
+    Returns (success, warnings)
+    """
+    warnings = []
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(['pbcopy'], input=b'', capture_output=True)
+        elif sys.platform == "linux":
+            subprocess.run(['xsel', '-c'], capture_output=True)
+        elif sys.platform == "win32":
+            subprocess.run(['cmd', '/c', 'echo off | clip'], capture_output=True)
+    except Exception as e:
+        warnings.append(f"Failed to clear clipboard: {str(e)}")
+    return len(warnings) == 0, warnings
+
+def get_message_history_locations():
+    """
+    Returns locations that might contain message history
+    """
+    locations = []
+    seen_paths = set()  # Track seen paths to avoid duplicates
+    
+    # Core message storage
+    home = os.path.expanduser("~")
+    
+    # Message history locations
+    history_paths = [
+        os.path.join(home, ".enchat_history"),
+        os.path.join(home, ".local", "share", "enchat", "history"),
+        os.path.join(home, "Library", "Application Support", "Enchat", "history"),
+        os.path.join(home, "AppData", "Local", "Enchat", "history"),
+    ]
+    
+    for path in history_paths:
+        if os.path.exists(path) and path not in seen_paths:
+            seen_paths.add(path)
+            locations.append((path, "Message history", 3))
+            
+    # Terminal scrollback files
+    term_paths = [
+        os.path.join(home, ".zsh_history"),
+        os.path.join(home, ".bash_history"),
+        os.path.join(home, ".python_history"),
+    ]
+    
+    for path in term_paths:
+        if os.path.exists(path) and path not in seen_paths:
+            seen_paths.add(path)
+            locations.append((path, "Terminal history", 2))
+            
+    # Additional potential message locations
+    extra_paths = [
+        os.path.join(home, ".cache", "enchat"),
+        os.path.join(home, "Library", "Caches", "Enchat"),
+        os.path.join(home, "AppData", "Local", "Temp", "Enchat"),
+    ]
+    
+    for path in extra_paths:
+        if os.path.exists(path) and path not in seen_paths:
+            seen_paths.add(path)
+            locations.append((path, "Message cache", 2))
+    
+    return locations
+
+def clear_memory():
+    """
+    Clear sensitive data from memory
+    """
+    import gc
+    
+    # First clear all Enchat-specific data
+    try:
+        # Clear message buffers
+        global message_buffer, outbox_queue, message_cache
+        if 'message_buffer' in globals():
+            message_buffer = None
+        if 'outbox_queue' in globals():
+            outbox_queue = None
+        if 'message_cache' in globals():
+            message_cache = None
+        
+        # Clear ChatUI data
+        if 'ChatUI' in globals():
+            for attr in ['room', 'nick', 'server', 'fernet', 'message_buffer']:
+                if hasattr(ChatUI, attr):
+                    setattr(ChatUI, attr, None)
+        
+        # Clear encryption keys
+        if 'Fernet' in globals():
+            if hasattr(Fernet, 'key'):
+                setattr(Fernet, 'key', None)
+        
+        # Clear command history
+        if 'readline' in sys.modules:
+            import readline
+            readline.clear_history()
+            
+        # Clear any remaining references, but skip function names
+        frame = sys._getframe()
+        while frame:
+            for key in list(frame.f_locals.keys()):
+                value = frame.f_locals[key]
+                # Skip functions and built-ins
+                if not callable(value) and not isinstance(value, type):
+                    if ('enchat' in key.lower() or 
+                        'message' in key.lower() or 
+                        'key' in key.lower()):
+                        frame.f_locals[key] = None
+            frame = frame.f_back
+            
+    except Exception:
+        pass
+        
+    # Force garbage collection multiple times
+    for _ in range(3):
+        gc.collect()
+    
+    # Clear Python's internal buffers
+    sys.stdout.flush()
+    sys.stderr.flush()
+    
+    # Overwrite memory with random data
+    try:
+        import ctypes
+        import array
+        
+        # Get memory page size
+        page_size = 4096  # Default to 4KB if we can't get it
+        try:
+            import resource
+            page_size = resource.getpagesize()
         except:
             pass
+            
+        # Allocate and free memory repeatedly with random data
+        for _ in range(5):
+            # Allocate multiple pages
+            arrays = []
+            try:
+                for _ in range(10):  # Try to allocate 10 pages
+                    arr = array.array('B', os.urandom(page_size))
+                    arrays.append(arr)
+            except:
+                pass
+                
+            # Free them
+            for arr in arrays:
+                del arr
+            arrays = None
+            
+            # Force garbage collection
+            gc.collect()
+            
+    except:
+        pass
+        
+    # Final garbage collection
+    gc.collect()
     
-    # 1. Delete configuration file
-    if os.path.exists(CONF_FILE):
-        if secure_delete_file(CONF_FILE):
-            deleted_items.append("Configuration file (~/.enchat.conf)")
-        else:
-            failed_items.append("Configuration file (~/.enchat.conf)")
+    return True
+
+def secure_memory_wipe(obj: object) -> None:
+    """
+    Securely wipe an object from memory
+    """
+    if obj is None:
+        return
+        
+    try:
+        # Handle different types of objects
+        if isinstance(obj, str):
+            # Overwrite string contents with random data
+            string_buffer = ctypes.create_string_buffer(len(obj))
+            ctypes.memset(string_buffer, 0, len(obj))
+            
+        elif isinstance(obj, bytes):
+            # Overwrite bytes with random data
+            byte_buffer = ctypes.create_string_buffer(len(obj))
+            ctypes.memset(byte_buffer, 0, len(obj))
+            
+        elif isinstance(obj, (list, tuple, set)):
+            # Recursively wipe contained objects
+            for item in obj:
+                secure_memory_wipe(item)
+            
+        elif isinstance(obj, dict):
+            # Wipe both keys and values
+            for key, value in obj.items():
+                secure_memory_wipe(key)
+                secure_memory_wipe(value)
+                
+        # Force garbage collection after wiping
+        del obj
+        gc.collect()
+        
+    except Exception as e:
+        console.print(f"[yellow]⚠️  Memory wipe warning: {str(e)}[/]")
+
+def secure_delete_file(path: str, passes: int = 3) -> Tuple[bool, Optional[str]]:
+    """
+    Securely delete a file using multiple overwrite passes
+    Returns (success, error_message)
+    """
+    if not os.path.exists(path) or os.path.islink(path):
+        return True, None
+        
+    try:
+        # Get file size
+        file_size = os.path.getsize(path)
+        
+        # Multiple overwrite passes
+        for _ in range(passes):
+            with open(path, 'wb') as f:
+                # Write random data
+                f.write(secrets.token_bytes(file_size))
+                # Ensure it's written to disk
+                f.flush()
+                os.fsync(f.fileno())
+                
+        # Finally delete the file
+        os.remove(path)
+        return True, None
+        
+    except Exception as e:
+        return False, str(e)
+
+def find_enchat_files() -> Set[str]:
+    """
+    Find all Enchat-related files that need to be wiped
+    """
+    files_to_wipe = set()
     
-    # 2. Delete downloads directory
-    if os.path.exists(DOWNLOADS_DIR):
-        file_count = sum([len(files) for root, dirs, files in os.walk(DOWNLOADS_DIR)])
-        if secure_delete_directory(DOWNLOADS_DIR):
-            deleted_items.append(f"Downloads folder ({file_count} files)")
-        else:
-            failed_items.append("Downloads folder")
+    # Config file
+    config_path = os.path.expanduser("~/.enchat.conf")
+    if os.path.exists(config_path):
+        files_to_wipe.add(config_path)
     
-    # 3. Delete temp files directory
-    if os.path.exists(FILE_TEMP_DIR):
-        if secure_delete_directory(FILE_TEMP_DIR):
-            deleted_items.append("Temporary files cache")
-        else:
-            failed_items.append("Temporary files cache")
+    # Python cache files
+    cache_pattern = os.path.join(os.path.dirname(__file__), "**/*.pyc")
+    files_to_wipe.update(glob.glob(cache_pattern, recursive=True))
     
-    # 4. Clear keyring entries (if available)
-    if KEYRING_AVAILABLE:
+    # Temp files
+    temp_pattern = os.path.join(os.path.dirname(__file__), "**/*.tmp")
+    files_to_wipe.update(glob.glob(temp_pattern, recursive=True))
+    
+    return files_to_wipe
+
+def secure_wipe():
+    """
+    Securely wipe all Enchat data
+    """
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        console=console
+    ) as progress:
+        
+        # Track overall progress
+        overall_task = progress.add_task("[cyan]Wiping Enchat data...", total=100)
+        
         try:
-            import keyring
-            if keyring_room:
+            # 1. Clear sensitive memory
+            progress.update(overall_task, advance=10, description="[cyan]Clearing sensitive memory...")
+            
+            # Clear encryption keys
+            secure_memory_wipe(globals().get('f', None))  # Fernet instance
+            secure_memory_wipe(globals().get('secret', None))  # Passphrase
+            secure_memory_wipe(globals().get('buf', None))  # Message buffer
+            
+            # Force garbage collection
+            gc.collect()
+            progress.update(overall_task, advance=10)
+            
+            # 2. Wipe configuration file
+            progress.update(overall_task, description="[cyan]Wiping configuration...")
+            config_path = os.path.expanduser("~/.enchat.conf")
+            if os.path.exists(config_path):
+                success, error = secure_delete_file(config_path)
+                if not success:
+                    progress.console.print(f"[yellow]⚠️  Warning: Could not fully wipe config: {error}[/]")
+            progress.update(overall_task, advance=30)
+            
+            # 3. Clear keychain entries
+            progress.update(overall_task, description="[cyan]Clearing keychain entries...")
+            keychain_success, keychain_warnings = wipe_keychain_entries()
+            if keychain_warnings:
+                for warning in keychain_warnings:
+                    progress.console.print(f"[yellow]⚠️  {warning}[/]")
+            progress.update(overall_task, advance=20)
+            
+            # 4. Clear system artifacts
+            progress.update(overall_task, description="[cyan]Clearing system artifacts...")
+            
+            # Clear clipboard if it contains sensitive data
+            try:
+                if platform.system() == 'Darwin':  # macOS
+                    os.system('pbcopy < /dev/null')
+                elif platform.system() == 'Linux':
+                    os.system('xsel -cb')  # X11
+                    os.system('wl-copy --clear')  # Wayland
+                elif platform.system() == 'Windows':
+                    os.system('cmd /c "echo off | clip"')
+            except:
+                pass
+                
+            # Clear shell history entries containing 'enchat'
+            shell = os.environ.get('SHELL', '')
+            if 'zsh' in shell:
+                history_file = os.path.expanduser('~/.zsh_history')
+            elif 'bash' in shell:
+                history_file = os.path.expanduser('~/.bash_history')
+            
+            if os.path.exists(history_file):
                 try:
-                    keyring.delete_password("enchat", f"room_{keyring_room}")
-                    deleted_items.append("Keyring/keychain entries")
+                    with open(history_file, 'r') as f:
+                        lines = f.readlines()
+                    with open(history_file, 'w') as f:
+                        f.writelines([l for l in lines if 'enchat' not in l.lower()])
                 except:
-                    deleted_items.append("Keyring entries (attempted cleanup)")
-            else:
-                deleted_items.append("Keyring entries (no rooms found)")
-        except Exception:
-            failed_items.append("Keyring entries")
-    
-    # 5. Clear any Python cache files in project directory (__pycache__)
-    try:
-        pycache_dir = os.path.join(os.path.dirname(__file__), "__pycache__")
-        if os.path.exists(pycache_dir):
-            if secure_delete_directory(pycache_dir):
-                deleted_items.append("Python cache files")
-            else:
-                failed_items.append("Python cache files")
-    except Exception:
-        pass
-    
-    # 6. Clear any potential log files or temporary files in system temp
-    try:
-        temp_dir = tempfile.gettempdir()
-        for item in os.listdir(temp_dir):
-            if "enchat" in item.lower():
-                item_path = os.path.join(temp_dir, item)
-                if os.path.isfile(item_path):
-                    secure_delete_file(item_path)
-                elif os.path.isdir(item_path):
-                    secure_delete_directory(item_path)
-        deleted_items.append("System temp files (enchat related)")
-    except Exception:
-        pass
-    
-    # Report results
-    console.print("\n[bold green]🗑️  WIPE COMPLETE[/]")
-    
-    if deleted_items:
-        console.print(f"[green]✅ Successfully wiped ({len(deleted_items)} items):[/]")
-        for item in deleted_items:
-            console.print(f"  • {item}")
-    
-    if failed_items:
-        console.print(f"\n[yellow]⚠️  Could not delete ({len(failed_items)} items):[/]")
-        for item in failed_items:
-            console.print(f"  • {item}")
-        console.print("[yellow]These may require manual deletion or don't exist[/]")
-    
-    console.print(f"\n[bold cyan]🔒 Enchat data wipe complete![/]")
-    console.print("[dim]All traces have been securely removed. Enchat project files remain intact.[/]")
+                    pass
+                    
+            progress.update(overall_task, advance=20)
+            
+            # 5. Final cleanup
+            progress.update(overall_task, description="[cyan]Performing final cleanup...")
+            gc.collect()  # One final GC run
+            progress.update(overall_task, advance=10)
+            
+            # Complete
+            progress.update(overall_task, description="[bold green]✅ Wipe complete!")
+            
+        except Exception as e:
+            progress.console.print(f"\n[bold red]Error during secure wipe: {str(e)}[/]")
+            progress.console.print("[yellow]Some data may not have been fully wiped[/]")
+            return
+            
+    console.print("\n[bold green]🔒 Enchat data has been securely wiped![/]")
+    console.print("[dim]Note: Some traces may remain in system memory until reboot[/]")
+    console.print("[dim]For maximum security, consider rebooting your system[/]")
 
 # ── config / keyring ──────────────────────────────────────────────────
 def save_passphrase_keychain(room,secret):
@@ -1015,45 +1584,241 @@ def first_run(args):
     else: save_conf(room,nick,secret,server)
     return room,nick,secret,server
 
+def reset_enchat():
+    """
+    Reset Enchat configuration and keys
+    """
+    console = Console()
+    
+    console.print("\n[yellow]🔄 ENCHAT RESET - CLEAR CONFIGURATION[/]")
+    console.print("This will clear:")
+    console.print("  • Saved room settings")
+    console.print("  • Stored encryption keys")
+    console.print("  • Keychain entries")
+    console.print()
+    
+    # Confirm
+    confirm = input("Are you sure you want to reset Enchat configuration? [y/n]: ")
+    if confirm.lower() != 'y':
+        console.print("[green]Cancelled - configuration preserved[/]")
+        return
+    
+    console.print("\nClearing configuration...\n")
+    
+    wiped = []
+    warnings = []
+    
+    # 1. Clear config file
+    config_path = os.path.expanduser("~/.enchat.conf")
+    if os.path.exists(config_path):
+        try:
+            # Simple deletion is fine for config
+            os.remove(config_path)
+            wiped.append("Configuration file")
+        except Exception as e:
+            warnings.append(f"Could not delete config file: {str(e)}")
+    
+    # 2. Clear keychain entries
+    keychain_success, keychain_warnings = wipe_keychain_entries()
+    if keychain_success:
+        wiped.append("Keychain entries")
+    warnings.extend(keychain_warnings)
+    
+    # Print results
+    if wiped:
+        console.print("[green]✅ Successfully cleared:[/]")
+        for item in wiped:
+            console.print(f"  • {item}")
+        console.print()
+    
+    if warnings:
+        console.print("[yellow]⚠️  Warnings:[/]")
+        for warning in warnings:
+            console.print(f"  • {warning}")
+        console.print()
+    
+    console.print("[bold green]🔄 Reset complete![/]")
+    console.print("[dim]You can now join a room with new settings[/]")
+
 def main():
-    ap=argparse.ArgumentParser("enchat")
-    ap.add_argument("--server"); ap.add_argument("--enchat-server",action="store_true")
-    ap.add_argument("--default-server",action="store_true"); ap.add_argument("--clear-config",action="store_true")
-    ap.add_argument("command", nargs="?", help="Commands: 'kill' to securely wipe ALL enchat data, 'reset' to clear configuration")
-    ns=ap.parse_args()
+    """
+    Main entry point
+    """
+    parser = argparse.ArgumentParser(description="Secure chat client")
+    
+    # Add commands
+    subparsers = parser.add_subparsers(dest='command', help='Commands')
+    
+    # Join command
+    join_parser = subparsers.add_parser('join', help='Join a chat room')
+    join_parser.add_argument('room', help='Room name to join')
+    join_parser.add_argument('--name', '-n', help='Your display name')
+    
+    # Create command  
+    create_parser = subparsers.add_parser('create', help='Create a new chat room')
+    create_parser.add_argument('room', help='Room name to create')
+    
+    # Kill command
+    kill_parser = subparsers.add_parser('kill', help='Securely wipe ALL Enchat data')
+    
+    # Reset command
+    reset_parser = subparsers.add_parser('reset', help='Clear saved room settings and keys')
+    
+    # Version command
+    version_parser = subparsers.add_parser('version', help='Show version info')
+    
+    # Add original chat options
+    parser.add_argument('--server', help='Server to connect to')
+    parser.add_argument('--enchat-server', action='store_true', help='Run in server mode')
+    parser.add_argument('--default-server', action='store_true', help='Use default server')
+    parser.add_argument('--clear-config', action='store_true', help='Clear configuration')
+    
+    args = parser.parse_args()
     
     # Handle special commands first
-    if ns.command == "kill":
-        wipe_all_enchat_data()
-        sys.exit()
+    if args.command == 'kill':
+        # Show warning banner
+        console.print("[bold red]🔥 ENCHAT DATA WIPE - COMPLETE REMOVAL[/]")
+        console.print("[yellow]This will permanently delete ALL enchat data:[/]")
+        console.print("  • Configuration file (~/.enchat.conf)")
+        console.print("  • All downloaded files (downloads/ folder)")
+        console.print("  • Temporary files and cache")
+        console.print("  • Keyring/keychain entries")
+        console.print("  • All traces of enchat usage")
+        console.print()
+        
+        console.print("[yellow]⚠️  Security Notice:[/]")
+        console.print("  • SSD secure deletion is limited due to wear leveling")
+        console.print("  • Some traces may remain in filesystem journals")
+        console.print("  • System swap/hibernation files may contain data")
+        console.print()
+        
+        # Confirm
+        confirm = input("Are you absolutely sure? This cannot be undone [y/n]: ")
+        if confirm.lower() != 'y':
+            console.print("[green]Cancelled - no data was deleted[/]")
+            return
+            
+        secure_wipe()
+        return
+        
+    elif args.command == 'reset':
+        reset_enchat()
+        return
+        
+    elif args.command == 'join':
+        join_room(args.room, args.name)
+        return
+        
+    elif args.command == 'create':
+        create_room(args.room)
+        return
+        
+    elif args.command == 'version':
+        console.print(f"[cyan]Enchat v{VERSION}[/]")
+        return
+        
+    # Handle original chat functionality
+    if args.clear_config and os.path.exists(CONF_FILE):
+        os.remove(CONF_FILE)
+        console.print("[green]Settings cleared[/]")
+        return
+        
+    # Load or create configuration
+    room, nick, secret, server = load_conf()
+    if not room or not nick:
+        room, nick, secret, server = first_run(args)
+    if not secret:
+        secret = getpass("🔑 Passphrase: ")
     
-    if ns.command == "reset":
-        if os.path.exists(CONF_FILE):
-            os.remove(CONF_FILE)
-            console.print("[green]✅ Configuration cleared[/]")
-        else:
-            console.print("[yellow]ℹ️  No configuration file found[/]")
-        sys.exit()
+    # Initialize encryption
+    f = Fernet(gen_key(secret))
+    buf: List[Tuple[str, str, bool]] = []
     
-    if ns.clear_config and os.path.exists(CONF_FILE):
-        os.remove(CONF_FILE); console.print("[green]settings cleared[/]"); sys.exit()
-
-    room,nick,secret,server = load_conf()
-    if not room or not nick: room,nick,secret,server=first_run(ns)
-    if not secret: secret=getpass("🔑 Passphrase: ")
-
-    f=Fernet(gen_key(secret)); buf:List[Tuple[str,str,bool]]=[]
-    # global outbox worker
-    out_stop=threading.Event()
-    threading.Thread(target=outbox_worker,args=(out_stop,),daemon=True).start()
-
-    ui=ChatUI(room,nick,server,f,buf)
+    # Start outbox worker
+    out_stop = threading.Event()
+    threading.Thread(target=outbox_worker, args=(out_stop,), daemon=True).start()
+    
+    # Initialize UI
+    ui = ChatUI(room, nick, server, f, buf)
+    
+    # Handle clean shutdown
     def quit_clean(*_):
-        out_stop.set(); enqueue_sys(room,nick,"left",server,f); sys.exit()
-    signal.signal(signal.SIGINT,quit_clean)
+        out_stop.set()
+        enqueue_sys(room, nick, "left", server, f)
+        sys.exit()
+    signal.signal(signal.SIGINT, quit_clean)
+    
+    try:
+        ui.run()
+    finally:
+        out_stop.set()
+        enqueue_sys(room, nick, "left", server, f)
 
-    try: ui.run()
-    finally: out_stop.set(); enqueue_sys(room,nick,"left",server,f)
+def join_room(room_name, display_name=None):
+    """
+    Join a chat room
+    """
+    if not room_name:
+        print("Error: Room name is required")
+        return
+        
+    # Get display name if not provided
+    if not display_name:
+        display_name = input("Enter your display name: ")
+    
+    # Get room key
+    secret = getpass("🔑 Room key: ")
+    
+    # Initialize encryption
+    f = Fernet(gen_key(secret))
+    buf: List[Tuple[str, str, bool]] = []
+    
+    # Start outbox worker
+    out_stop = threading.Event()
+    threading.Thread(target=outbox_worker, args=(out_stop,), daemon=True).start()
+    
+    # Initialize UI
+    ui = ChatUI(room_name, display_name, DEFAULT_SERVER, f, buf)
+    
+    # Handle clean shutdown
+    def quit_clean(*_):
+        out_stop.set()
+        enqueue_sys(room_name, display_name, "left", DEFAULT_SERVER, f)
+        sys.exit()
+    signal.signal(signal.SIGINT, quit_clean)
+    
+    try:
+        # Save config
+        save_conf(room_name, display_name, secret)
+        # Join and run UI
+        enqueue_sys(room_name, display_name, "joined", DEFAULT_SERVER, f)
+        ui.run()
+    finally:
+        out_stop.set()
+        enqueue_sys(room_name, display_name, "left", DEFAULT_SERVER, f)
+
+def create_room(room_name):
+    """
+    Create a new chat room
+    """
+    if not room_name:
+        print("Error: Room name is required")
+        return
+        
+    # Generate and show room key
+    room_key = base64.urlsafe_b64encode(os.urandom(32)).decode()
+    print("\n🔑 ROOM KEY (save this securely):")
+    print(f"{room_key}\n")
+    
+    # Show join command
+    print("To join this room, use:")
+    print(f"enchat join {room_name}")
+    print("\nShare the room name and key securely with other participants")
+    
+    # Ask to join now
+    if input("\nJoin this room now? [y/n]: ").lower() == 'y':
+        join_room(room_name)
 
 if __name__=="__main__":
     main()

@@ -8,7 +8,7 @@ from . import state, constants, session_key, file_transfer
 from .utils import trim
 from .network import enqueue_msg, enqueue_sys
 
-def handle_command(line: str, room: str, nick: str, server: str, f, buf: list):
+def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, is_public: bool = False):
     """Handles all slash commands."""
     cmd, _, args = line[1:].partition(' ')
     
@@ -43,9 +43,20 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list):
             "/clear": "Clear the message window.",
             "/exit": "Quit Enchat.",
         }
-        buf.append(("System", "[bold]=== HELP: Available Commands ===[/]", False))
+        cli_help = {
+            "enchat create": "Create a new private room.",
+            "enchat join <room>": "Join a private room.",
+            "enchat public <room>": "Join a public room (e.g., lobby).",
+            "enchat --reset": "Reset your local configuration."
+        }
+        buf.append(("System", "[bold]=== In-Chat Commands ===[/]", False))
         for c, d in help_text.items():
             buf.append(("System", f"[bold cyan]{c}[/]: {d}", False))
+        
+        buf.append(("System", "\n[bold]=== CLI Commands ===[/]", False))
+        for c, d in cli_help.items():
+            buf.append(("System", f"  [bold cyan]{c}[/]: {d}", False))
+
         trim(buf)
 
     elif cmd == "stats":
@@ -56,6 +67,17 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list):
         trim(buf)
 
     elif cmd == "security":
+        if is_public:
+            buf.append(("System", "[bold]=== 🛡️  PUBLIC ROOM SECURITY ===[/]", False))
+            buf.append(("System", Text.from_markup(u"  [yellow]Note: This is a public room. The key is public knowledge.[/]"), False))
+            buf.append(("System", Text.from_markup(u"  [bold cyan]├─ Encryption[/]"), False))
+            buf.append(("System", Text.from_markup(u"  │  • Transport: [green]Encrypted[/] (Server cannot read messages)"), False))
+            buf.append(("System", Text.from_markup(u"  │  • Privacy:   [bold red]NONE[/] (Anyone with the room name can read)"), False))
+            buf.append(("System", Text.from_markup(u"  [bold cyan]└─ Forward Secrecy[/]"), False))
+            buf.append(("System", Text.from_markup(u"     • Status: [bold red]Not available in public rooms[/]"), False))
+            trim(buf)
+            return
+
         buf.append(("System", "[bold]=== 🛡️  SECURITY OVERVIEW ===[/]", False))
         
         # --- Encryption Core ---

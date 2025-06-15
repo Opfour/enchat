@@ -14,9 +14,10 @@ from .utils import trim
 from .input import start_char_thread
 
 class ChatUI:
-    def __init__(self, room, nick, server, f, buf):
+    def __init__(self, room, nick, server, f, buf, is_public=False):
         self.room, self.nick, self.server, self.f = room, nick, server, f
         self.buf = buf
+        self.is_public = is_public
         self.layout = Layout()
         self.layout.split(
             Layout(name="header", size=3),
@@ -119,7 +120,7 @@ class ChatUI:
                     continue
                 
                 if line.startswith("/"):
-                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf) == "exit":
+                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.is_public) == "exit":
                         break
                 else:
                     if len(line) > constants.MAX_MSG_LEN:

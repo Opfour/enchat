@@ -20,7 +20,7 @@ from rich.align import Align
 
 # Local modules from enchat_lib
 from enchat_lib import (
-    config, constants, crypto, network, secure_wipe, ui
+    config, constants, crypto, network, secure_wipe, ui, public_rooms
 )
 from enchat_lib.constants import VERSION, KEYRING_AVAILABLE
 
@@ -45,12 +45,37 @@ def first_run(args):
     
     console.print(Panel(
         Text.from_markup(
-            "Welcome to [bold cyan]enchat[/]! Let's get you set up.\n\n"
-            "A [bold]Room[/] is a shared chat space.\n"
-            "A [bold]Passphrase[/] is the key to that room. [bold red]Never lose it![/]"
+            "Welcome to [bold cyan]enchat[/]! Let's get you set up."
         ),
         title="Welcome",
         border_style="green",
+        padding=(1, 2)
+    ))
+    
+    action = Prompt.ask(
+        Text.from_markup(
+            "\nWhat would you like to do?\n\n"
+            "   [bold]1)[/] [cyan]Private Room[/] (Create/Join)\n"
+            "   [bold]2)[/] [yellow]Public Room[/] (Join)"
+        ),
+        choices=["1", "2"],
+        show_choices=False,
+        default="1"
+    )
+
+    if action == "2":
+        # Create a dummy args object for join_public_room
+        public_args = argparse.Namespace(room_name=None)
+        join_public_room(public_args)
+        return None, None, None, None
+
+    console.print(Panel(
+        Text.from_markup(
+            "A [bold]Room[/] is a shared chat space.\n"
+            "A [bold]Passphrase[/] is the key to that room. [bold red]Never lose it![/]"
+        ),
+        title="Private Room Setup",
+        border_style="blue",
         padding=(1, 2)
     ))
     
@@ -83,7 +108,7 @@ def first_run(args):
         
     return room, nick, secret, server
 
-def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[str, str, bool]]):
+def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[str, str, bool]], is_public: bool = False):
     """Initializes and runs the chat UI."""
     if not secret:
         secret = getpass(f"🔑 Passphrase for room '{room}': ")
@@ -93,7 +118,7 @@ def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[s
     out_stop = threading.Event()
     threading.Thread(target=network.outbox_worker, args=(out_stop,), daemon=True).start()
 
-    chat_ui = ui.ChatUI(room, nick, server, f, buf)
+    chat_ui = ui.ChatUI(room, nick, server, f, buf, is_public)
     
     def quit_clean(*_):
         out_stop.set()
@@ -153,6 +178,41 @@ def create_room(args):
 
         start_chat(room_name, display_name, room_key, server, [])
 
+def join_public_room(args):
+    """Handler for the 'public' command."""
+    _render_header("Public Rooms")
+    
+    room_alias = args.room_name
+    available_rooms = public_rooms.PUBLIC_ROOMS.keys()
+    
+    if not room_alias:
+        room_alias = Prompt.ask("Which public room would you like to join?", choices=list(available_rooms))
+
+    if room_alias not in public_rooms.PUBLIC_ROOMS:
+        console.print(f"[bold red]Error: Public room '{room_alias}' not found.[/]")
+        console.print(f"Available public rooms are: [cyan]{', '.join(available_rooms)}[/]")
+        return
+
+    room_name, secret = public_rooms.PUBLIC_ROOMS[room_alias]
+    server = constants.ENCHAT_NTFY # Public rooms are on the default Enchat server
+    
+    console.print(Text.from_markup(f"Joining public room: [bold cyan]{room_alias}[/].\n"), justify="center")
+    console.print(Panel(
+        Text.from_markup(
+            "[bold yellow]Welcome![/] Public rooms are encrypted, but the passphrase is public knowledge.\n"
+            "Do not share any private information here."
+        ),
+        title="⚠️ Public Room Notice",
+        border_style="yellow",
+        padding=(1,2)
+    ))
+
+    display_name = Prompt.ask("👤 Your Nickname")
+    
+    console.print(f"\n[green]Connecting to '{room_alias}' as '{display_name}'...[/]")
+    start_chat(room_name, display_name, secret, server, [], is_public=True)
+
+
 def main():
     """Main entry point: parses arguments and starts the correct action."""
     parser = argparse.ArgumentParser(
@@ -166,15 +226,25 @@ def main():
 
     # Default command (run with existing config)
     run_parser = subparsers.add_parser('run', help='Run Enchat with saved settings (default action)')
-
+    
     # Join command
-    join_parser = subparsers.add_parser('join', help='Join a new or existing chat room.')
+    join_parser = subparsers.add_parser('join', help='Join a new or existing private room.')
     join_parser.add_argument('room', help='Room name to join.')
     join_parser.add_argument('--name', '-n', help='Your display name.')
-
+    
     # Create command
-    create_parser = subparsers.add_parser('create', help='Create a new chat room and key.')
-    create_parser.add_argument('room', help='Name of the room to create.')
+    create_parser = subparsers.add_parser('create', help='Create a new private chat room and key.')
+    create_parser.add_argument('room', nargs='?', default=None, help='Name of the room to create (optional).')
+
+    # Public command
+    public_parser = subparsers.add_parser('public', help='Join a public, less-secure chat room.')
+    public_parser.add_argument(
+        'room_name', 
+        nargs='?',
+        default=None,
+        choices=list(public_rooms.PUBLIC_ROOMS.keys()) + [None],
+        help='Name of the public room to join. If omitted, a list will be shown.'
+    )
 
     # Maintenance commands
     reset_parser = subparsers.add_parser('reset', help='Clear saved room settings and keys.')
@@ -195,27 +265,37 @@ def main():
         else:
             console.print("[green]Cancelled.[/]")
         return
-        
+            
     if args.command == 'reset':
-        secure_wipe.reset_enchat()
+        if Prompt.ask("[bold red]Are you sure you want to clear all settings?", choices=["y", "n"], default="n") == 'y':
+            secure_wipe.reset_enchat()
+        else:
+            console.print("[green]Cancelled.[/]")
         return
-
+        
     if args.command == 'join':
         join_room(args)
         return
-    
+        
     if args.command == 'create':
         create_room(args)
+        return
+
+    if args.command == 'public':
+        join_public_room(args)
         return
         
     # Default action: run with config or do first-time setup
     room, nick, secret, server_conf = config.load_conf()
     server = args.server or server_conf
     
-    if not all((room, nick, server)):
+    if not all((room, nick, server)) or args.command != 'run':
+        # If 'run' is specified but no config, it's a first run.
+        # Or if any other command was called that needs setup.
         room, nick, secret, server = first_run(args)
 
-    start_chat(room, nick, secret, server, [])
+    if room and nick and server:
+        start_chat(room, nick, secret, server, [])
 
 if __name__ == "__main__":
     try:

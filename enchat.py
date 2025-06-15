@@ -14,6 +14,9 @@ from typing import List, Tuple
 from cryptography.fernet import Fernet
 from rich.console import Console
 from rich.prompt import Prompt
+from rich.panel import Panel
+from rich.text import Text
+from rich.align import Align
 
 # Local modules from enchat_lib
 from enchat_lib import (
@@ -23,28 +26,60 @@ from enchat_lib.constants import VERSION, KEYRING_AVAILABLE
 
 console = Console()
 
-def first_run(args):
-    """Guides the user through the first-time setup."""
+def _render_header(title: str):
+    """Renders a standardized header panel."""
     console.clear()
-    console.print("[bold cyan]🔐 First-time setup[/]")
-    room = Prompt.ask("🏠 Room").strip().lower()
-    nick = Prompt.ask("👤 Nick").strip()
-    secret = getpass("🔑 Passphrase: ")
+    header_text = Text("enchat", style="bold cyan", justify="center")
+    panel = Panel(
+        header_text,
+        title=f"v{VERSION}",
+        subtitle=f"[bold blue]{title}[/]",
+        border_style="blue"
+    )
+    console.print(panel)
+    console.print()
+
+def first_run(args):
+    """Guides the user through the first-time setup with an enhanced UI."""
+    _render_header("First-Time Setup")
+    
+    console.print(Panel(
+        Text.from_markup(
+            "Welcome to [bold cyan]enchat[/]! Let's get you set up.\n\n"
+            "A [bold]Room[/] is a shared chat space.\n"
+            "A [bold]Passphrase[/] is the key to that room. [bold red]Never lose it![/]"
+        ),
+        title="Welcome",
+        border_style="green",
+        padding=(1, 2)
+    ))
+    
+    room = Prompt.ask("🏠 Room Name")
+    nick = Prompt.ask("👤 Nickname")
+    secret = getpass("🔑 Passphrase (will be hidden)")
     
     server_url = getattr(args, 'server', None)
     if server_url:
         server = server_url.rstrip('/')
+        console.print(f"🌍 Using custom server: [bold cyan]{server}[/]")
     else:
-        console.print("[cyan]Server: 1) enchat (recommended)  2) ntfy.sh (public)  3) custom[/]")
-        choice = Prompt.ask("Choice", choices=["1", "2", "3"], default="1")
-        server = constants.ENCHAT_NTFY if choice == "1" else constants.DEFAULT_NTFY if choice == "2" else Prompt.ask("URL").rstrip('/')
+        console.print("📡 Please choose a server:")
+        choice = Prompt.ask(
+            Text.from_markup(
+                "   [bold]1)[/] [green]Enchat Server[/] (Recommended, private)\n"
+                "   [bold]2)[/] [yellow]Public ntfy.sh[/] (Functional, less private)\n"
+                "   [bold]3)[/] [cyan]Custom Server[/]"
+            ),
+            choices=["1", "2", "3"],
+            default="1"
+        )
+        server = constants.ENCHAT_NTFY if choice == "1" else constants.DEFAULT_NTFY if choice == "2" else Prompt.ask("Enter Custom Server URL").rstrip('/')
 
-    if Prompt.ask("Save these settings for future use?", choices=["y", "n"], default="y") == "y":
-        if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y", "n"], default="y") == "y":
+    if Prompt.ask("\n💾 Save these settings for next time?", choices=["y", "n"], default="y") == "y":
+        if KEYRING_AVAILABLE and Prompt.ask("🔐 Save passphrase securely in system keychain?", choices=["y", "n"], default="y") == "y":
             config.save_passphrase_keychain(room, secret)
-            config.save_conf(room, nick, "", server)
-        else:
-            config.save_conf(room, nick, "", server)
+        config.save_conf(room, nick, "", server)
+        console.print("[green]Settings saved.[/]")
         
     return room, nick, secret, server
 
@@ -74,37 +109,47 @@ def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[s
         out_stop.set()
 
 def join_room(args):
-    """Handler for the 'join' command."""
-    room_name = args.room
-    display_name = args.name or Prompt.ask("👤 Nick").strip()
-    secret = getpass("🔑 Room key: ")
+    """Handler for the 'join' command with an enhanced UI."""
+    _render_header("Join Room")
+    room_name = args.room or Prompt.ask("🏠 Room Name to join")
+    display_name = args.name or Prompt.ask("👤 Your Nickname")
+    secret = getpass("🔑 Room Passphrase (will be hidden)")
     server = args.server or constants.DEFAULT_NTFY
     
-    if Prompt.ask("Save these room settings for future use?", choices=["y", "n"], default="n") == 'y':
-        if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y","n"], default="y")=="y":
+    if Prompt.ask("\n💾 Save these room settings for next time?", choices=["y", "n"], default="n") == 'y':
+        if KEYRING_AVAILABLE and Prompt.ask("🔐 Save passphrase securely in system keychain?", choices=["y","n"], default="y")=="y":
             config.save_passphrase_keychain(room_name, secret)
         config.save_conf(room_name, display_name, "", server)
+        console.print("[green]Settings saved.[/]")
 
-    console.print(f"[green]Joining room '{room_name}' as '{display_name}'...[/]")
+    console.print(f"\n[green]Joining room '{room_name}' as '{display_name}'...[/]")
     start_chat(room_name, display_name, secret, server, [])
 
 
 def create_room(args):
-    """Handler for the 'create' command."""
-    room_name = args.room
+    """Handler for the 'create' command with an enhanced UI."""
+    _render_header("Create New Room")
+    room_name = args.room or Prompt.ask("🏠 New Room Name")
     room_key = base64.urlsafe_b64encode(os.urandom(32)).decode()
-    console.print("\n[bold green]🔑 New Room Key (save this securely!):[/]")
-    console.print(f"[yellow]{room_key}[/]")
-    console.print(f"\nTo join, others can run:\n[cyan]python3 enchat.py join {room_name}[/]\n")
+
+    key_panel = Panel(
+        Text(room_key, justify="center", style="bold yellow"),
+        title="🔑 Your New Room Key",
+        border_style="red",
+        subtitle="[dim]Share this with other participants[/]"
+    )
+    console.print(key_panel)
+    console.print(Text.from_markup("[bold red]Warning:[/b red] You cannot recover this key. Store it securely!"))
     
-    if Prompt.ask("Join this room now?", choices=["y", "n"], default="y") == 'y':
-        display_name = Prompt.ask("👤 Nick").strip()
+    if Prompt.ask("\n🤝 Join this room now?", choices=["y", "n"], default="y") == 'y':
+        display_name = Prompt.ask("👤 Your Nickname")
         server = args.server or constants.DEFAULT_NTFY
         
-        if Prompt.ask("Save these room settings for future use?", choices=["y", "n"], default="n") == 'y':
-            if KEYRING_AVAILABLE and Prompt.ask("Save new room key in keychain?", choices=["y","n"], default="y") == 'y':
+        if Prompt.ask("💾 Save these room settings for next time?", choices=["y", "n"], default="n") == 'y':
+            if KEYRING_AVAILABLE and Prompt.ask("🔐 Save new room key in system keychain?", choices=["y","n"], default="y") == 'y':
                 config.save_passphrase_keychain(room_name, room_key)
             config.save_conf(room_name, display_name, "", server)
+            console.print("[green]Settings saved.[/]")
 
         start_chat(room_name, display_name, room_key, server, [])
 

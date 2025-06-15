@@ -64,9 +64,8 @@ def first_run(args):
     )
 
     if action == "2":
-        # Create a dummy args object for join_public_room
-        public_args = argparse.Namespace(room_name=None)
-        join_public_room(public_args)
+        # Pass the original args to ensure the --tor flag is propagated
+        join_public_room(args)
         return None, None, None, None
 
     console.print(Panel(
@@ -108,7 +107,7 @@ def first_run(args):
         
     return room, nick, secret, server
 
-def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[str, str, bool]], is_public: bool = False):
+def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[str, str, bool]], is_public: bool = False, is_tor: bool = False):
     """Initializes and runs the chat UI."""
     if not secret:
         secret = getpass(f"🔑 Passphrase for room '{room}': ")
@@ -118,7 +117,7 @@ def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[s
     out_stop = threading.Event()
     threading.Thread(target=network.outbox_worker, args=(out_stop,), daemon=True).start()
 
-    chat_ui = ui.ChatUI(room, nick, server, f, buf, is_public)
+    chat_ui = ui.ChatUI(room, nick, server, f, buf, is_public, is_tor)
     
     def quit_clean(*_):
         out_stop.set()
@@ -148,7 +147,7 @@ def join_room(args):
         console.print("[green]Settings saved.[/]")
 
     console.print(f"\n[green]Joining room '{room_name}' as '{display_name}'...[/]")
-    start_chat(room_name, display_name, secret, server, [])
+    start_chat(room_name, display_name, secret, server, [], is_tor=args.tor)
 
 
 def create_room(args):
@@ -176,13 +175,13 @@ def create_room(args):
             config.save_conf(room_name, display_name, "", server)
             console.print("[green]Settings saved.[/]")
 
-        start_chat(room_name, display_name, room_key, server, [])
+        start_chat(room_name, display_name, room_key, server, [], is_tor=args.tor)
 
 def join_public_room(args):
     """Handler for the 'public' command."""
     _render_header("Public Rooms")
     
-    room_alias = args.room_name
+    room_alias = getattr(args, 'room_name', None)
     available_rooms = public_rooms.PUBLIC_ROOMS.keys()
     
     if not room_alias:
@@ -210,7 +209,7 @@ def join_public_room(args):
     display_name = Prompt.ask("👤 Your Nickname")
     
     console.print(f"\n[green]Connecting to '{room_alias}' as '{display_name}'...[/]")
-    start_chat(room_name, display_name, secret, server, [], is_public=True)
+    start_chat(room_name, display_name, secret, server, [], is_public=True, is_tor=args.tor)
 
 
 def main():
@@ -221,6 +220,7 @@ def main():
     )
     
     parser.add_argument('--server', help='Custom ntfy server URL to override saved/default.')
+    parser.add_argument('--tor', action='store_true', help='Route traffic through the Tor network (requires Tor to be running).')
     
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
@@ -286,6 +286,9 @@ def main():
         return
         
     # Default action: run with config or do first-time setup
+    if args.tor:
+        network.configure_tor()
+
     room, nick, secret, server_conf = config.load_conf()
     server = args.server or server_conf
     
@@ -295,7 +298,7 @@ def main():
         room, nick, secret, server = first_run(args)
 
     if room and nick and server:
-        start_chat(room, nick, secret, server, [])
+        start_chat(room, nick, secret, server, [], is_tor=args.tor)
 
 if __name__ == "__main__":
     try:

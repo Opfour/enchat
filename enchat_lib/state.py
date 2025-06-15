@@ -15,3 +15,6 @@ input_queue: queue.Queue = queue.Queue()
 
 # Non-blocking input buffer
 current_input: List[str] = []
+
+# Tor status
+tor_ip = None

@@ -1,5 +1,7 @@
-rich
+rich>=13.0.0
 requests
-cryptography
-keyring
-winsound; sys_platform == 'win32' 
+cryptography>=3.4.8
+keyring>=23.5.0; sys_platform != 'linux'
+secretstorage>=3.3.1; sys_platform == 'linux'
+winsound; sys_platform == 'win32'
+requests[socks]>=2.25.1 

@@ -14,10 +14,11 @@ from .utils import trim
 from .input import start_char_thread
 
 class ChatUI:
-    def __init__(self, room, nick, server, f, buf, is_public=False):
+    def __init__(self, room, nick, server, f, buf, is_public=False, is_tor=False):
         self.room, self.nick, self.server, self.f = room, nick, server, f
         self.buf = buf
         self.is_public = is_public
+        self.is_tor = is_tor
         self.layout = Layout()
         self.layout.split(
             Layout(name="header", size=3),
@@ -30,12 +31,20 @@ class ChatUI:
         self.last_terminal_size = (0, 0)
 
     def _head(self):
-        return Panel(Text.assemble(
+        parts = [
             (" ENCHAT ", "bold cyan"),
             (" CONNECTED ", "bold green"),
             (f" {self.room} ", "white"),
+        ]
+        if self.is_tor:
+            parts.append(("🧅 TOR ", "bold purple"))
+        
+        parts.extend([
             (f" {self.nick} ", "magenta"),
-            (" | " + self.server.replace("https://", ""), "dim")), style="blue")
+            (" | " + self.server.replace("https://", ""), "dim")
+        ])
+        
+        return Panel(Text.assemble(*parts), style="blue")
 
     def _body(self):
         try:
@@ -120,7 +129,7 @@ class ChatUI:
                     continue
                 
                 if line.startswith("/"):
-                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.is_public) == "exit":
+                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.is_public, self.is_tor) == "exit":
                         break
                 else:
                     if len(line) > constants.MAX_MSG_LEN:

@@ -8,7 +8,7 @@ from . import state, constants, session_key, file_transfer
 from .utils import trim
 from .network import enqueue_msg, enqueue_sys
 
-def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, is_public: bool = False):
+def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, is_public: bool = False, is_tor: bool = False):
     """Handles all slash commands."""
     cmd, _, args = line[1:].partition(' ')
     
@@ -73,12 +73,24 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
             buf.append(("System", Text.from_markup(u"  [bold cyan]├─ Encryption[/]"), False))
             buf.append(("System", Text.from_markup(u"  │  • Transport: [green]Encrypted[/] (Server cannot read messages)"), False))
             buf.append(("System", Text.from_markup(u"  │  • Privacy:   [bold red]NONE[/] (Anyone with the room name can read)"), False))
+            
+            if is_tor:
+                buf.append(("System", Text.from_markup(u"  [bold cyan]├─ Network[/]"), False))
+                buf.append(("System", Text.from_markup(u"  │  • Anonymity: [bold purple]Tor Network[/]"), False))
+                buf.append(("System", Text.from_markup(f"  │  • Exit IP:   [purple]{state.tor_ip}[/]"), False))
+
             buf.append(("System", Text.from_markup(u"  [bold cyan]└─ Forward Secrecy[/]"), False))
             buf.append(("System", Text.from_markup(u"     • Status: [bold red]Not available in public rooms[/]"), False))
             trim(buf)
             return
 
         buf.append(("System", "[bold]=== 🛡️  SECURITY OVERVIEW ===[/]", False))
+        
+        # --- Network ---
+        if is_tor:
+            buf.append(("System", Text.from_markup(u"  [bold purple]├─ Network[/]"), False))
+            buf.append(("System", Text.from_markup(u"  │  • Anonymity: [bold purple]Tor Network[/]"), False))
+            buf.append(("System", Text.from_markup(f"  │  • Exit IP:   [purple]{state.tor_ip}[/]"), False))
         
         # --- Encryption Core ---
         buf.append(("System", Text.from_markup(u"  [bold cyan]├─ Encryption Core[/]"), False))

@@ -47,19 +47,35 @@ if ! "$VENV_DIR/bin/pip" install -r "$INSTALL_DIR/requirements.txt"; then
 fi
 echo_success "Python packages installed."
 
-# 5. Find a suitable directory in PATH for the executable
+# 5. Find or create a suitable directory in PATH for the executable
 echo_info "Finding a suitable installation path for the executable..."
-if [[ -d "/usr/local/bin" ]] && [[ -w "/usr/local/bin" ]]; then
-    BIN_DIR="/usr/local/bin"
-elif [[ -d "$HOME/.local/bin" ]] && [[ -w "$HOME/.local/bin" ]]; then
+BIN_DIR=""
+
+# Prefer user-local bin if it exists and is writable
+if [[ -d "$HOME/.local/bin" ]] && [[ -w "$HOME/.local/bin" ]]; then
     BIN_DIR="$HOME/.local/bin"
-    if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
-         echo -e "\033[33m[WARNING]\033[0m Your PATH does not seem to include $HOME/.local/bin. You may need to add it to run 'enchat'."
-         echo -e "\033[33mAdd 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your ~/.bashrc or ~/.zshrc\033[0m"
-    fi
-else
-    echo_error "Could not find a writable directory in your PATH. Please create and add ~/.local/bin to your PATH, or run this script with sudo."
+# Fallback to /usr/local/bin if it exists and is writable (less common without sudo)
+elif [[ -d "/usr/local/bin" ]] && [[ -w "/usr/local/bin" ]]; then
+    BIN_DIR="/usr/local/bin"
 fi
+
+# If no directory was found, create and use ~/.local/bin
+if [ -z "$BIN_DIR" ]; then
+    echo_info "~/.local/bin not found or not writable. Creating it..."
+    mkdir -p "$HOME/.local/bin"
+    if [ $? -ne 0 ]; then
+        echo_error "Failed to create $HOME/.local/bin. Please check permissions."
+    fi
+    BIN_DIR="$HOME/.local/bin"
+fi
+
+# Check if the chosen directory is in the user's PATH
+if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
+     echo -e "\033[33m[WARNING]\033[0m Your PATH does not seem to include $BIN_DIR."
+     echo -e "\033[33m         To run 'enchat' from anywhere, you may need to add it to your shell's config file."
+     echo -e "\033[33m         Add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your ~/.zshrc or ~/.bashrc and restart your terminal.\033[0m"
+fi
+
 echo_info "Will install executable to $BIN_DIR"
 
 # 6. Create the launcher script

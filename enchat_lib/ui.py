@@ -48,7 +48,17 @@ class ChatUI:
         t = Text()
         for u, m, own in messages_to_show:
             if u == "System":
-                t.append(f"[SYSTEM] {m}\n", style="yellow")
+                # Create a base Text object for the "[SYSTEM]" part
+                system_line = Text("[SYSTEM] ", style="yellow")
+                
+                # Check if the message is already a Text object or a string with markup
+                if isinstance(m, Text):
+                    system_line.append(m)
+                else:
+                    system_line.append(Text.from_markup(m))
+                
+                system_line.append("\n")
+                t.append(system_line)
             else:
                 lab, st = ("You", "green") if own else (u, "cyan")
                 t.append(f"{lab}: ", style=st)

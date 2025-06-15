@@ -39,11 +39,12 @@ def first_run(args):
         choice = Prompt.ask("Choice", choices=["1", "2", "3"], default="1")
         server = constants.ENCHAT_NTFY if choice == "1" else constants.DEFAULT_NTFY if choice == "2" else Prompt.ask("URL").rstrip('/')
 
-    if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y", "n"], default="y") == "y":
-        config.save_passphrase_keychain(room, secret)
-        config.save_conf(room, nick, "", server)
-    else:
-        config.save_conf(room, nick, secret, server)
+    if Prompt.ask("Save these settings for future use?", choices=["y", "n"], default="y") == "y":
+        if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y", "n"], default="y") == "y":
+            config.save_passphrase_keychain(room, secret)
+            config.save_conf(room, nick, "", server)
+        else:
+            config.save_conf(room, nick, "", server)
         
     return room, nick, secret, server
 
@@ -79,9 +80,10 @@ def join_room(args):
     secret = getpass("🔑 Room key: ")
     server = args.server or constants.DEFAULT_NTFY
     
-    config.save_conf(room_name, display_name, secret, server)
-    if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y","n"], default="y")=="y":
-        config.save_passphrase_keychain(room_name, secret)
+    if Prompt.ask("Save these room settings for future use?", choices=["y", "n"], default="n") == 'y':
+        if KEYRING_AVAILABLE and Prompt.ask("Save passphrase in keychain?", choices=["y","n"], default="y")=="y":
+            config.save_passphrase_keychain(room_name, secret)
+        config.save_conf(room_name, display_name, "", server)
 
     console.print(f"[green]Joining room '{room_name}' as '{display_name}'...[/]")
     start_chat(room_name, display_name, secret, server, [])
@@ -98,7 +100,12 @@ def create_room(args):
     if Prompt.ask("Join this room now?", choices=["y", "n"], default="y") == 'y':
         display_name = Prompt.ask("👤 Nick").strip()
         server = args.server or constants.DEFAULT_NTFY
-        config.save_conf(room_name, display_name, room_key, server)
+        
+        if Prompt.ask("Save these room settings for future use?", choices=["y", "n"], default="n") == 'y':
+            if KEYRING_AVAILABLE and Prompt.ask("Save new room key in keychain?", choices=["y","n"], default="y") == 'y':
+                config.save_passphrase_keychain(room_name, room_key)
+            config.save_conf(room_name, display_name, "", server)
+
         start_chat(room_name, display_name, room_key, server, [])
 
 def main():

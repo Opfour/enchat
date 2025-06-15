@@ -1,4 +1,6 @@
 import os
+import sys
+import subprocess
 from .constants import CONF_FILE, DEFAULT_NTFY, KEYRING_AVAILABLE
 
 if KEYRING_AVAILABLE:
@@ -20,6 +22,48 @@ def load_passphrase_keychain(room: str) -> str:
         except Exception:
             pass
     return ""
+
+def wipe_keychain_entries():
+    """
+    Remove only Enchat-related entries from system keychain/keyring.
+    Returns (success, warnings)
+    """
+    warnings = []
+    try:
+        if not KEYRING_AVAILABLE:
+            warnings.append("Keyring library not available, cannot wipe entries.")
+            return False, warnings
+
+        if sys.platform == "darwin":
+            # macOS: Use 'security' command-line tool
+            result = subprocess.run(['security', 'find-generic-password', '-s', 'enchat'], capture_output=True, text=True)
+            for line in result.stderr.splitlines():
+                if "service=" in line:
+                    service = line.split('service=')[1].strip().strip('"')
+                    if 'room_' in service:
+                        subprocess.run(['security', 'delete-generic-password', '-s', 'enchat', '-a', service], check=True)
+        
+        elif sys.platform == "linux":
+            # This is a best-effort approach for Secret-Tool
+            if subprocess.run(['which', 'secret-tool'], capture_output=True).returncode == 0:
+                result = subprocess.run(['secret-tool', 'search', 'application', 'enchat'], capture_output=True, text=True)
+                for line in result.stdout.splitlines():
+                    if line.strip():
+                         # secret-tool lacks a direct delete, so we clear the password
+                         keyring.delete_password("enchat", line.strip())
+            else:
+                warnings.append("secret-tool not found. Cannot clear Linux keyring entries automatically.")
+        
+        elif sys.platform == "win32":
+             # Windows uses Credential Locker, which keyring abstracts
+             # We find all secrets for the service and delete them.
+             for room_config in keyring.get_credential("enchat", None):
+                 keyring.delete_password("enchat", room_config.username)
+
+    except Exception as e:
+        warnings.append(f"An error occurred while clearing keychain entries: {e}")
+    
+    return len(warnings) == 0, warnings
 
 def save_conf(room: str, nick: str, secret: str, server: str):
     """Saves the configuration to a file."""

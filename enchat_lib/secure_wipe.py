@@ -142,10 +142,8 @@ def secure_wipe():
         
         overall_task = progress.add_task("[cyan]Wiping Enchat data...", total=100)
         
-        # 1. Clear sensitive memory objects
-        progress.update(overall_task, advance=10, description="[cyan]Clearing sensitive memory...")
-        secure_memory_wipe(state.message_buffer)
-        secure_memory_wipe(state.file_chunks)
+        # 1. Clear sensitive memory objects (placebo, but harmless)
+        progress.update(overall_task, advance=10, description="[cyan]Running garbage collector...")
         gc.collect()
         progress.update(overall_task, advance=10)
         

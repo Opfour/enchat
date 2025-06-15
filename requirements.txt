@@ -1,0 +1,5 @@
+rich
+requests
+cryptography
+keyring
+winsound; sys_platform == 'win32' 

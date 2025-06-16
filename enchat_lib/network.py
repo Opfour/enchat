@@ -16,6 +16,16 @@ session = requests.Session()
 def configure_tor():
     """Configures the application to use Tor SOCKS proxy."""
     console.print("[bold purple]🧅 Attempting to connect via Tor...[/]")
+    
+    try:
+        import socks
+    except ImportError:
+        console.print("[bold red]❌ Tor Connection Failed.[/]")
+        console.print("   [dim]Error: Missing dependencies for SOCKS support.[/]")
+        console.print("   [yellow]Please run the installer again to fix this:[/]")
+        console.print("   [bold cyan]./uninstall.sh && ./install.sh[/]")
+        sys.exit(1)
+        
     session.proxies = {
         'http': 'socks5h://127.0.0.1:9050',
         'https': 'socks5h://127.0.0.1:9050'
@@ -32,8 +42,13 @@ def configure_tor():
         console.print("[bold green]✅ Successfully connected to Tor.[/]")
     except requests.exceptions.RequestException as e:
         console.print("[bold red]❌ Tor Connection Failed.[/]")
-        console.print(f"   [dim]Error: {e}[/]")
-        console.print("   [yellow]Please ensure Tor is running and accessible on SOCKS port 9050.[/]")
+        # The error from requests can be verbose. We simplify it.
+        if "SOCKS" in str(e):
+             console.print("   [dim]Error: Missing dependencies for SOCKS support.[/]")
+             console.print("   [yellow]Please ensure Tor is running and accessible on SOCKS port 9050.[/]")
+        else:
+             console.print(f"   [dim]Error: {e}[/]")
+             console.print("   [yellow]Please ensure Tor is running and accessible on SOCKS port 9050.[/]")
         sys.exit(1)
 
 def enqueue_msg(room, nick, txt, server, f):

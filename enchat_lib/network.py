@@ -180,8 +180,14 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event):
                         except json.JSONDecodeError: pass
                     else:  # MSG
                         state.room_participants.add(sender)
-                        buf.append((sender, content, False))
-                        notifications.notify(f"Msg from {sender}")
+                        
+                        is_mention = f"@{nick}" in content
+                        if is_mention:
+                            buf.append((sender, content, False, True))
+                            notifications.notify_mention(f"You were mentioned by {sender}")
+                        else:
+                            buf.append((sender, content, False, False))
+                            notifications.notify(f"Msg from {sender}")
                     
                     trim(buf)
         except Exception as e:

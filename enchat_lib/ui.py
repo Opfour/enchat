@@ -50,29 +50,36 @@ class ChatUI:
         try:
             terminal_height = shutil.get_terminal_size().lines
             available_lines = max(3, terminal_height - 10)
-        except:
+        except Exception:
             available_lines = 20
         
         messages_to_show = self.buf[-available_lines:]
         
         t = Text()
-        for u, m, own in messages_to_show:
-            if u == "System":
-                # Create a base Text object for the "[SYSTEM]" part
+        for msg in messages_to_show:
+            # Safely unpack the message tuple
+            sender, content, own = msg[0], msg[1], msg[2]
+            is_mention = msg[3] if len(msg) > 3 else False
+
+            if sender == "System":
                 system_line = Text("[SYSTEM] ", style="yellow")
-                
-                # Check if the message is already a Text object or a string with markup
-                if isinstance(m, Text):
-                    system_line.append(m)
+                if isinstance(content, Text):
+                    system_line.append(content)
                 else:
-                    system_line.append(Text.from_markup(m))
-                
+                    system_line.append(Text.from_markup(str(content)))
                 system_line.append("\n")
                 t.append(system_line)
             else:
-                lab, st = ("You", "green") if own else (u, "cyan")
-                t.append(f"{lab}: ", style=st)
-                t.append(f"{m}\n")
+                lab, st = ("You", "green") if own else (sender, "cyan")
+                
+                if is_mention:
+                    # Style the entire line for high visibility and readability
+                    t.append(f"{lab}: {content}\n", style="black on yellow")
+                else:
+                    # Use the original, unchanged message style
+                    t.append(f"{lab}: ", style=st)
+                    t.append(f"{content}\n")
+                
         return Panel(t, title=f"Messages ({len(self.buf)})", padding=(0, 1))
 
     def _inp(self):
@@ -133,10 +140,10 @@ class ChatUI:
                         break
                 else:
                     if len(line) > constants.MAX_MSG_LEN:
-                        self.buf.append(("System", "❌ Message too long", False))
+                        self.buf.append(("System", "❌ Message too long", False, False))
                         continue
                     network.enqueue_msg(self.room, self.nick, line, self.server, self.f)
-                    self.buf.append((self.nick, line, True))
+                    self.buf.append((self.nick, line, True, False))
                     trim(self.buf)
 
         stop_evt.set()

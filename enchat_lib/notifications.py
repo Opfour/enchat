@@ -19,3 +19,17 @@ def notify(msg: str):
             winsound.MessageBeep(winsound.MB_ICONASTERISK)
         except Exception:
             pass
+
+def notify_mention(msg: str):
+    """Sends a desktop notification, bypassing the global notification setting."""
+    if sys.platform.startswith("linux") and which("notify-send"):
+        subprocess.run(["notify-send", "Enchat", msg], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif sys.platform == "darwin" and which("osascript"):
+        subprocess.run(["osascript", "-e", f'display notification "{msg}" with title "Enchat"'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    elif sys.platform == "win32":
+        try:
+            import winsound
+            winsound.MessageBeep(winsound.MB_ICONASTERISK)
+        except Exception:
+            pass

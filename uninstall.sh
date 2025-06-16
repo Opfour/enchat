@@ -3,7 +3,7 @@
 # --- Configuration ---
 INSTALL_DIR="$HOME/.enchat_app"
 EXECUTABLE_NAME="enchat"
-BIN_DIRS=("$HOME/.local/bin" "/usr/local/bin")
+BIN_DIRS=("$HOME/bin" "$HOME/.local/bin" "/usr/local/bin")
 
 # --- Helper Functions ---
 echo_info() { echo -e "\033[34m[INFO]\033[0m $1"; }

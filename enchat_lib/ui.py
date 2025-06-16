@@ -2,13 +2,14 @@ import threading
 import time
 import queue
 import shutil
+from io import StringIO
 
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 from rich.align import Align
-from rich.console import Group
+from rich.console import Group, Console as RichConsole
 
 from . import state, constants, network, commands
 from .utils import trim
@@ -49,28 +50,33 @@ class ChatUI:
 
     def _body(self):
         try:
-            terminal_height = shutil.get_terminal_size().lines
-            available_lines = max(3, terminal_height - 10)
+            terminal_size = shutil.get_terminal_size()
+            # Header=3, Input=3, Panel-Border=2. Net content height.
+            available_height = max(3, terminal_size.lines - 8)
+            content_width = terminal_size.columns - 4
         except Exception:
-            available_lines = 20
-        
-        messages_to_show = self.buf[-available_lines:]
-        renderables = []
+            available_height = 20
+            content_width = 80
 
-        for msg in messages_to_show:
+        renderables = []
+        current_height = 0
+
+        # Iterate backwards through the buffer to get the latest messages first
+        for msg in reversed(self.buf):
             sender, content, own = msg[0], msg[1], msg[2]
             is_mention = msg[3] if len(msg) > 3 else False
-
+            
+            # Create the specific renderable for the message
             if sender == "System":
                 if isinstance(content, Panel):
-                    renderables.append(content)
+                    renderable = content
                 else:
                     system_text = Text("[SYSTEM] ", style="yellow")
                     if isinstance(content, Text):
                         system_text.append(content)
                     else:
                         system_text.append(Text.from_markup(str(content)))
-                    renderables.append(system_text)
+                    renderable = system_text
             else:
                 lab, st = ("You", "green") if own else (sender, "cyan")
                 message_text = Text()
@@ -79,7 +85,22 @@ class ChatUI:
                 else:
                     message_text.append(f"{lab}: ", style=st)
                     message_text.append(content)
-                renderables.append(message_text)
+                renderable = message_text
+            
+            # Render to a temporary console to accurately measure the true height
+            measure_console = RichConsole(width=content_width, file=StringIO())
+            measure_console.print(renderable)
+            output = measure_console.file.getvalue()
+            msg_height = output.count('\n')
+            
+            if msg_height == 0 and output.strip():
+                msg_height = 1
+
+            if current_height + msg_height > available_height:
+                break
+            
+            renderables.insert(0, renderable)
+            current_height += msg_height
                 
         return Panel(Group(*renderables), title=f"Messages ({len(self.buf)})", padding=(0, 1))
 

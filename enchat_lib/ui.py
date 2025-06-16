@@ -146,7 +146,6 @@ class ChatUI:
                     self.buf.append((self.nick, line, True, False))
                     trim(self.buf)
 
+        # The loop has exited, so we just need to stop the listener thread.
+        # The main script (enchat.py) will handle sending the "left" message.
         stop_evt.set()
-        network.enqueue_sys(self.room, self.nick, "left", self.server, self.f)
-        # Give the message a moment to be sent
-        time.sleep(0.1)

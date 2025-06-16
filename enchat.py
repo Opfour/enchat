@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 import threading
+import time
 from getpass import getpass
 from typing import List, Tuple
 
@@ -20,7 +21,7 @@ from rich.align import Align
 
 # Local modules from enchat_lib
 from enchat_lib import (
-    config, constants, crypto, network, secure_wipe, ui, public_rooms
+    config, constants, crypto, network, secure_wipe, ui, public_rooms, state
 )
 from enchat_lib.constants import VERSION, KEYRING_AVAILABLE
 
@@ -119,18 +120,22 @@ def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[s
 
     chat_ui = ui.ChatUI(room, nick, server, f, buf, is_public, is_tor)
     
-    def quit_clean(*_):
-        out_stop.set()
-        console.print("\n[yellow]Exiting...[/]")
+    def quit_handler(*_):
         sys.exit(0)
 
-    signal.signal(signal.SIGINT, quit_clean)
-    signal.signal(signal.SIGTERM, quit_clean)
+    signal.signal(signal.SIGINT, quit_handler)
+    signal.signal(signal.SIGTERM, quit_handler)
     
     try:
         chat_ui.run()
     finally:
+        network.enqueue_sys(room, nick, "left", server, f)
+        
+        state.outbox_queue.join()
+        
         out_stop.set()
+        
+        console.print("\n[bold green]✓ Session closed.[/]")
 
 def join_room(args):
     """Handler for the 'join' command with an enhanced UI."""

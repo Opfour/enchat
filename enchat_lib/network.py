@@ -61,55 +61,59 @@ def outbox_worker(stop_evt: threading.Event):
     """Worker thread for sending messages from the outbox queue."""
     while not stop_evt.is_set():
         try:
-            kind, room, nick, payload, server, f = state.outbox_queue.get(timeout=0.5)
+            item = state.outbox_queue.get(timeout=0.5)
+            kind, room, nick, payload, server, f = item
         except queue.Empty:
             continue
+        
+        try:
+            if session_key.should_rotate_key(room):
+                new_key = session_key.generate_session_key()
+                session_key.set_session_key(room, new_key)
+                encrypted_key = session_key.encrypt_session_key(new_key, f)
+                body = f"SESSIONKEY:{encrypted_key}"
+                try:
+                    session.post(f"{server}/{room}", data=body, timeout=15)
+                except Exception:
+                    pass
 
-        if session_key.should_rotate_key(room):
-            new_key = session_key.generate_session_key()
-            session_key.set_session_key(room, new_key)
-            encrypted_key = session_key.encrypt_session_key(new_key, f)
-            body = f"SESSIONKEY:{encrypted_key}"
-            try:
-                session.post(f"{server}/{room}", data=body, timeout=15)
-            except Exception:
-                pass
+            current_key = session_key.get_session_key(room)
+            if not current_key:
+                current_key = session_key.generate_session_key()
+                session_key.set_session_key(room, current_key)
+                encrypted_key = session_key.encrypt_session_key(current_key, f)
+                body = f"SESSIONKEY:{encrypted_key}"
+                try:
+                    session.post(f"{server}/{room}", data=body, timeout=15)
+                except Exception:
+                    pass
 
-        current_key = session_key.get_session_key(room)
-        if not current_key:
-            current_key = session_key.generate_session_key()
-            session_key.set_session_key(room, current_key)
-            encrypted_key = session_key.encrypt_session_key(current_key, f)
-            body = f"SESSIONKEY:{encrypted_key}"
-            try:
-                session.post(f"{server}/{room}", data=body, timeout=15)
-            except Exception:
-                pass
-
-        if kind in ["MSG", "SYS", "FILEMETA", "FILECHUNK"]:
-            ts = int(time.time())
-            content = f"SYSTEM:{payload}" if kind == "SYS" else payload
-            msg_to_encrypt = f'{ts}|{nick}|{content}'
-            session_encrypted = session_key.encrypt_with_session(msg_to_encrypt, current_key)
-            body = f"{kind}:{crypto.encrypt(session_encrypted, f)}"
-        else:
-            continue
+            if kind in ["MSG", "SYS", "FILEMETA", "FILECHUNK"]:
+                ts = int(time.time())
+                content = f"SYSTEM:{payload}" if kind == "SYS" else payload
+                msg_to_encrypt = f'{ts}|{nick}|{content}'
+                session_encrypted = session_key.encrypt_with_session(msg_to_encrypt, current_key)
+                body = f"{kind}:{crypto.encrypt(session_encrypted, f)}"
+            else:
+                continue
             
-        url = f"{server}/{room}"
-        retry, delay = 0, 2
-        while retry < 6 and not stop_evt.is_set():
-            try:
-                r = session.post(url, data=body, timeout=15)
-                if r.status_code == 200:
-                    break
-                delay = int(r.headers.get("Retry-After", delay)) if r.status_code == 429 else min(delay * 2, 30)
-            except Exception:
-                delay = min(delay * 2, 30)
-            retry += 1
-            time.sleep(delay)
+            url = f"{server}/{room}"
+            retry, delay = 0, 2
+            while retry < 6 and not stop_evt.is_set():
+                try:
+                    r = session.post(url, data=body, timeout=15)
+                    if r.status_code == 200:
+                        break
+                    delay = int(r.headers.get("Retry-After", delay)) if r.status_code == 429 else min(delay * 2, 30)
+                except Exception:
+                    delay = min(delay * 2, 30)
+                retry += 1
+                time.sleep(delay)
 
-        if retry >= 6:
-            console.log(f"[red]✗ could not deliver {kind.lower()} after retries[/]")
+            if retry >= 6:
+                console.log(f"[red]✗ could not deliver {kind.lower()} after retries[/]")
+        finally:
+            state.outbox_queue.task_done()
 
 def listener(room, nick, f, server, buf, stop_evt: threading.Event):
     """Worker thread for listening to SSE events."""

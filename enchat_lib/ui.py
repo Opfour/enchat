@@ -14,10 +14,11 @@ from .utils import trim
 from .input import start_char_thread
 
 class ChatUI:
-    def __init__(self, room, nick, server, f, buf, is_public=False):
+    def __init__(self, room, nick, server, f, buf, is_public=False, is_tor=False):
         self.room, self.nick, self.server, self.f = room, nick, server, f
         self.buf = buf
         self.is_public = is_public
+        self.is_tor = is_tor
         self.layout = Layout()
         self.layout.split(
             Layout(name="header", size=3),
@@ -30,40 +31,55 @@ class ChatUI:
         self.last_terminal_size = (0, 0)
 
     def _head(self):
-        return Panel(Text.assemble(
+        parts = [
             (" ENCHAT ", "bold cyan"),
             (" CONNECTED ", "bold green"),
             (f" {self.room} ", "white"),
+        ]
+        if self.is_tor:
+            parts.append(("🧅 TOR ", "bold purple"))
+        
+        parts.extend([
             (f" {self.nick} ", "magenta"),
-            (" | " + self.server.replace("https://", ""), "dim")), style="blue")
+            (" | " + self.server.replace("https://", ""), "dim")
+        ])
+        
+        return Panel(Text.assemble(*parts), style="blue")
 
     def _body(self):
         try:
             terminal_height = shutil.get_terminal_size().lines
             available_lines = max(3, terminal_height - 10)
-        except:
+        except Exception:
             available_lines = 20
         
         messages_to_show = self.buf[-available_lines:]
         
         t = Text()
-        for u, m, own in messages_to_show:
-            if u == "System":
-                # Create a base Text object for the "[SYSTEM]" part
+        for msg in messages_to_show:
+            # Safely unpack the message tuple
+            sender, content, own = msg[0], msg[1], msg[2]
+            is_mention = msg[3] if len(msg) > 3 else False
+
+            if sender == "System":
                 system_line = Text("[SYSTEM] ", style="yellow")
-                
-                # Check if the message is already a Text object or a string with markup
-                if isinstance(m, Text):
-                    system_line.append(m)
+                if isinstance(content, Text):
+                    system_line.append(content)
                 else:
-                    system_line.append(Text.from_markup(m))
-                
+                    system_line.append(Text.from_markup(str(content)))
                 system_line.append("\n")
                 t.append(system_line)
             else:
-                lab, st = ("You", "green") if own else (u, "cyan")
-                t.append(f"{lab}: ", style=st)
-                t.append(f"{m}\n")
+                lab, st = ("You", "green") if own else (sender, "cyan")
+                
+                if is_mention:
+                    # Style the entire line for high visibility and readability
+                    t.append(f"{lab}: {content}\n", style="black on yellow")
+                else:
+                    # Use the original, unchanged message style
+                    t.append(f"{lab}: ", style=st)
+                    t.append(f"{content}\n")
+                
         return Panel(t, title=f"Messages ({len(self.buf)})", padding=(0, 1))
 
     def _inp(self):
@@ -120,17 +136,16 @@ class ChatUI:
                     continue
                 
                 if line.startswith("/"):
-                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.is_public) == "exit":
+                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.is_public, self.is_tor) == "exit":
                         break
                 else:
                     if len(line) > constants.MAX_MSG_LEN:
-                        self.buf.append(("System", "❌ Message too long", False))
+                        self.buf.append(("System", "❌ Message too long", False, False))
                         continue
                     network.enqueue_msg(self.room, self.nick, line, self.server, self.f)
-                    self.buf.append((self.nick, line, True))
+                    self.buf.append((self.nick, line, True, False))
                     trim(self.buf)
 
+        # The loop has exited, so we just need to stop the listener thread.
+        # The main script (enchat.py) will handle sending the "left" message.
         stop_evt.set()
-        network.enqueue_sys(self.room, self.nick, "left", self.server, self.f)
-        # Give the message a moment to be sent
-        time.sleep(0.1)

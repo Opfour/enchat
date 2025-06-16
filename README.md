@@ -69,6 +69,7 @@ All you need to remember is your room passphrase - Enchat handles all the comple
 
 - **Real-time encrypted chat** with timestamps and status indicators
 - **🔒 Encrypted file sharing** with chunked transfer up to 5MB per file
+- **🧅 Tor support** for enhanced anonymity
 - **Multiple server options** including dedicated enchat server
 - **Self-hosted ntfy support** for complete infrastructure control
 - **Auto-reconnection** with smart retry logic
@@ -401,6 +402,7 @@ For maximum security, don't save your passphrase (choose 'n' during setup).
 
 **Connection Issues:**
 - Verify internet connection and ntfy server accessibility
+- If using `--tor`, ensure the Tor service is running locally on port 9050.
 - Try default ntfy.sh if custom server fails
 
 **Rate Limiting Issues:**
@@ -450,3 +452,4 @@ THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND…
 ---
 
 **Secure terminal communication made simple**
+

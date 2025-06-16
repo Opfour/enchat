@@ -14,6 +14,20 @@ echo_success() { echo -e "\033[32m[SUCCESS]\033[0m $1"; }
 echo_error() { echo -e "\033[31m[ERROR]\033[0m $1"; exit 1; }
 command_exists() { command -v "$1" >/dev/null 2>&1; }
 
+# --- OS Detection ---
+OS="$(uname -s)"
+case "$OS" in
+    Linux*)     MACHINE=Linux;;
+    Darwin*)    MACHINE=Mac;;
+    CYGWIN*|MINGW*) MACHINE=Windows;;
+    *)          MACHINE="UNKNOWN:${OS}"
+esac
+
+if [ "$MACHINE" == "Windows" ]; then
+    echo_info "This script is primarily for Linux/macOS. For native Windows, manual setup is recommended."
+    echo_info "You can try to proceed, but it may not work as expected. Using WSL is a good alternative."
+fi
+
 # --- Dependency Check & Auto-Install ---
 echo_info "Checking for Python 3..."
 if ! command_exists python3; then
@@ -39,10 +53,33 @@ echo_success "Python and virtual environment support verified."
 # --- Setup application directory and virtual environment ---
 echo_info "Setting up installation directory at $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
-python3 -m venv "$VENV_DIR"
-if [ $? -ne 0 ]; then
-    echo_error "Failed to create a virtual environment."
+
+echo_info "Creating Python virtual environment..."
+set +e
+VENV_CREATE_OUTPUT=$(python3 -m venv "$VENV_DIR" 2>&1)
+VENV_EXIT_CODE=$?
+set -e
+
+if [ $VENV_EXIT_CODE -ne 0 ]; then
+    # Check for a common Debian/Ubuntu issue
+    if [[ "$MACHINE" == "Linux" && -f /etc/os-release ]] && (grep -q -E 'ID=(ubuntu|debian)' /etc/os-release); then
+        if echo "$VENV_CREATE_OUTPUT" | grep -q "ensurepip"; then
+            echo_error "Failed to create virtual environment. This is a known issue on Debian/Ubuntu."
+            echo_info "The 'python3-venv' package is required. Please install it by running:"
+            echo_info "  sudo apt update && sudo apt install python3-venv -y"
+            echo_info "After installation, please run this script again."
+            exit 1
+        fi
+    fi
+
+    # Generic error for other cases
+    echo_error "Failed to create a virtual environment. Please check your Python 3 installation."
+    echo "--- Start of Error Log ---"
+    echo "$VENV_CREATE_OUTPUT"
+    echo "--- End of Error Log ---"
+    exit 1
 fi
+
 echo_success "Virtual environment created."
 
 # --- Copy application files ---
@@ -79,10 +116,37 @@ if [ -z "$BIN_DIR" ]; then
     BIN_DIR="$HOME/.local/bin"
 fi
 
+# Check if the chosen directory is in the user's PATH
 if [[ ":$PATH:" != *":$BIN_DIR:"* ]]; then
      echo -e "\033[33m[WARNING]\033[0m Your PATH does not seem to include $BIN_DIR."
-     echo -e "\033[33m         To run 'enchat' from anywhere, you may need to add it to your shell's config file."
-     echo -e "\033[33m         Add 'export PATH=\"\$HOME/.local/bin:\$PATH\"' to your ~/.zshrc or ~/.bashrc and restart your terminal.\033[0m"
+     
+     # Determine shell configuration file
+     SHELL_NAME=$(basename "$SHELL")
+     if [ "$SHELL_NAME" = "bash" ]; then
+         SHELL_CONFIG_FILE="$HOME/.bashrc"
+     elif [ "$SHELL_NAME" = "zsh" ]; then
+         SHELL_CONFIG_FILE="$HOME/.zshrc"
+     else
+         # Fallback for other POSIX-compliant shells
+         SHELL_CONFIG_FILE="$HOME/.profile"
+     fi
+
+     echo_info "Attempting to update your shell configuration file: $SHELL_CONFIG_FILE"
+
+     # The line to add to the config file
+     PATH_EXPORT_LINE='export PATH="$HOME/.local/bin:$PATH"'
+
+     # Add the line if it's not already there
+     if ! grep -qF -- "$PATH_EXPORT_LINE" "$SHELL_CONFIG_FILE" 2>/dev/null; then
+         echo_info "Adding PATH export to $SHELL_CONFIG_FILE..."
+         echo -e "\n# Add enchat to PATH" >> "$SHELL_CONFIG_FILE"
+         echo "$PATH_EXPORT_LINE" >> "$SHELL_CONFIG_FILE"
+         echo_success "Successfully updated $SHELL_CONFIG_FILE."
+         echo -e "\033[1;31m[IMPORTANT]\033[0m You MUST restart your terminal for the 'enchat' command to be available."
+     else
+         echo_info "PATH configuration already exists in $SHELL_CONFIG_FILE. No changes needed."
+         echo -e "\033[33m[WARNING]\033[0m If 'enchat' command is not found, please restart your terminal."
+     fi
 fi
 
 echo_info "Will install executable to $BIN_DIR"

@@ -18,3 +18,10 @@ current_input: List[str] = []
 
 # Tor status
 tor_ip = None
+
+# In-memory state for lotteries, keyed by room name
+# This is simple and resets if the client restarts.
+lottery_state: Dict[str, dict] = {}
+
+# In-memory state for polls, keyed by room name
+poll_state: Dict[str, dict] = {}

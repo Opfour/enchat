@@ -1,12 +1,19 @@
 import os
 import time
 import shutil
+import random
+import json
 
 from rich.text import Text
+from rich.panel import Panel
 
 from . import state, constants, session_key, file_transfer
 from .utils import trim
 from .network import enqueue_msg, enqueue_sys
+
+# In-memory state for lotteries, keyed by room name
+# This is a simple implementation and will reset if the client restarts.
+lottery_state = {}
 
 def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, is_public: bool = False, is_tor: bool = False):
     """Handles all slash commands."""
@@ -34,6 +41,9 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
         help_text = {
             "/help": "Show this help message.",
             "/who": "List users currently in the room.",
+            "/lottery": "Start or participate in a lottery. Use `/lottery help` for details.",
+            "/poll": "Create a poll. `/poll \"Q\" | \"A1\" | \"A2\"`",
+            "/vote": "Vote in a poll. `/vote <option_number>`",
             "/files": "List available files for download.",
             "/download <id>": "Download a file by its ID.",
             "/share <file>": "Share a file with the room.",
@@ -65,6 +75,150 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
         recv_msgs = total_msgs - my_msgs
         buf.append(("System", f"Messages - Sent: [bold green]{my_msgs}[/], Received: [bold cyan]{recv_msgs}[/], Total: [bold]{total_msgs}[/]", False))
         trim(buf)
+
+    elif cmd == "lottery":
+        sub_cmd, _, _ = args.partition(' ')
+        sub_cmd = sub_cmd.lower().strip()
+
+        lottery = state.lottery_state.get(room)
+
+        if sub_cmd == "start":
+            if lottery:
+                buf.append(("System", "[bold yellow]A lottery is already running in this room.[/]", False))
+            else:
+                # This command is now sent to all users to update their state
+                enqueue_sys(room, nick, "LOTTERY_START", server, f)
+        
+        elif sub_cmd == "enter":
+            if not lottery:
+                buf.append(("System", "[bold red]There is no active lottery to enter.[/]", False))
+            elif nick in lottery["participants"]:
+                buf.append(("System", f"[yellow]You have already entered the lottery.[/]", False))
+            else:
+                enqueue_sys(room, nick, "LOTTERY_ENTER", server, f)
+        
+        elif sub_cmd == "status":
+            if not lottery:
+                buf.append(("System", "[bold red]No lottery is currently active.[/]", False))
+            else:
+                count = len(lottery['participants'])
+                participants = sorted(list(lottery['participants']))
+                
+                status_text = Text()
+                status_text.append("Started by: ", style="default")
+                status_text.append(lottery['starter'], style="bold cyan")
+                status_text.append(f"\nParticipants ({count}):\n", style="default")
+                
+                if not participants:
+                    status_text.append("  (No one has entered yet)", style="dim")
+                else:
+                    for p in participants:
+                        status_text.append(f"  • {p}\n", style="magenta")
+
+                panel = Panel(
+                    status_text,
+                    title="[bold]🎲 Lottery Status[/]",
+                    border_style="blue",
+                    padding=(1, 2)
+                )
+                buf.append(("System", panel, False))
+
+        elif sub_cmd == "draw":
+            if not lottery:
+                buf.append(("System", "[bold red]There is no active lottery to draw a winner from.[/]", False))
+            elif lottery["starter"] != nick:
+                buf.append(("System", f"[bold red]Only the lottery starter ([cyan]{lottery['starter']}[/]) can draw a winner.[/]", False))
+            elif not lottery["participants"]:
+                buf.append(("System", "[bold yellow]There are no participants in the lottery.[/]", False))
+            else:
+                winner = random.choice(list(lottery["participants"]))
+                # Announce winner to everyone
+                enqueue_sys(room, nick, f"LOTTERY_WINNER {winner}", server, f)
+
+        elif sub_cmd == "cancel":
+            if not lottery:
+                buf.append(("System", "[bold red]There is no active lottery to cancel.[/]", False))
+            elif lottery["starter"] != nick:
+                buf.append(("System", f"[bold red]Only the lottery starter ([cyan]{lottery['starter']}[/]) can cancel it.[/]", False))
+            else:
+                enqueue_sys(room, nick, "LOTTERY_CANCEL", server, f)
+        
+        else: # Help for the lottery command
+            buf.append(("System", "[bold]🎲 Lottery Commands[/]", False))
+            buf.append(("System", "  [bold cyan]/lottery start[/] - Start a new lottery.", False))
+            buf.append(("System", "  [bold cyan]/lottery enter[/] - Join the current lottery.", False))
+            buf.append(("System", "  [bold cyan]/lottery status[/] - View lottery status.", False))
+            buf.append(("System", "  [bold cyan]/lottery draw[/] - Draw a winner (starter only).", False))
+            buf.append(("System", "  [bold cyan]/lottery cancel[/] - Cancel the lottery (starter only).", False))
+        
+        trim(buf)
+
+    elif cmd == "poll":
+        poll = state.poll_state.get(room)
+        
+        # Sub-commands for an existing poll
+        if args.lower() == 'status':
+            if not poll:
+                buf.append(("System", "[bold red]No poll is currently active.[/]", False))
+                return
+            # The status is now generated dynamically based on the shared state
+            # which is updated by the network listener.
+            options_text = ""
+            total_votes = 0
+            for i, option in enumerate(poll['options']):
+                vote_count = len(poll['votes'].get(str(i), []))
+                total_votes += vote_count
+                options_text += f"  [cyan]{i+1}.[/] {option} [bold]({vote_count} votes)[/]\n"
+            
+            poll_text = Text.from_markup(f"[bold]{poll['question']}[/]\n\n{options_text}\n[dim]Total votes: {total_votes}[/]")
+            panel = Panel(poll_text, title="[bold blue]📊 Poll Status[/]", border_style="blue", padding=(1, 2))
+            buf.append(("System", panel, False))
+            return
+
+        elif args.lower() == 'close':
+            if not poll:
+                buf.append(("System", "[bold red]No poll to close.[/]", False))
+            elif poll['starter'] != nick:
+                buf.append(("System", f"[bold red]Only the poll starter ([cyan]{poll['starter']}[/]) can close it.[/]", False))
+            else:
+                enqueue_sys(room, nick, "POLL_CLOSE", server, f)
+            return
+
+        # Create a new poll
+        if poll:
+            buf.append(("System", "[bold yellow]A poll is already running in this room. Close it first with `/poll close`.[/]", False))
+            return
+
+        parts = [p.strip().strip('"') for p in args.split('|')]
+        if len(parts) < 3:
+            buf.append(("System", "[bold red]Usage: /poll \"Question\" | \"Option 1\" | \"Option 2\"[/]", False))
+            return
+
+        question, *options = parts
+        if len(options) > 10:
+             buf.append(("System", "[bold red]Maximum of 10 options allowed.[/]", False))
+             return
+        
+        poll_data = {"question": question, "options": options}
+        enqueue_sys(room, nick, f"POLL_START {json.dumps(poll_data)}", server, f)
+
+    elif cmd == "vote":
+        poll = state.poll_state.get(room)
+        if not poll:
+            buf.append(("System", "[bold red]There is no active poll to vote in.[/]", False))
+            return
+
+        try:
+            choice = int(args.strip())
+            if not (1 <= choice <= len(poll['options'])):
+                raise ValueError
+        except (ValueError, IndexError):
+            buf.append(("System", f"[bold red]Invalid choice. Use a number between 1 and {len(poll['options'])}.[/]", False))
+            return
+        
+        # The check for whether a user has already voted is removed.
+        # The listener now handles vote changes correctly by moving the user's vote.
+        enqueue_sys(room, nick, f"POLL_VOTE {choice - 1}", server, f)
 
     elif cmd == "security":
         if is_public:

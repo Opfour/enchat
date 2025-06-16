@@ -74,7 +74,7 @@ All you need to remember is your room passphrase - Enchat handles all the comple
 - **Self-hosted ntfy support** for complete infrastructure control
 - **Auto-reconnection** with smart retry logic
 - **Desktop notifications** (Linux, macOS)
-- **Command system** (`/help`, `/clear`, `/exit`, `/server`, `/who`, `/share`, `/files`, `/download`)
+- **Command system** (`/help`, `/clear`, `/exit`, `/server`, `/who`, `/share`, `/files`, `/download`, `/lottery`)
 - **Smart input handling** and message validation
 - **Cross-platform** terminal support
 
@@ -180,6 +180,16 @@ Enchat supports **secure, end-to-end encrypted file transfer** using the same AE
 | `/share <filepath>` | Upload and share a file | `/share ~/document.pdf` |
 | `/files` | List available files for download | `/files` |
 | `/download <file_id>` | Download a file to `downloads/` folder | `/download a1b2c3d4` |
+
+### **🎲 In-Chat Lottery**
+
+Enchat includes a fun, simple lottery system accessible via the `/lottery` command. Use `/lottery help` inside the chat to see all available options, including:
+
+- **/lottery start**: Kicks off a new lottery.
+- **/lottery enter**: Joins the active lottery.
+- **/lottery draw**: The user who started the lottery can draw a winner.
+- **/lottery status**: Check who has entered.
+- **/lottery cancel**: The starter can cancel an active lottery.
 
 ### **🚀 File Sharing Workflow**
 
@@ -330,10 +340,22 @@ You can select your server during initial setup or use command line options to s
 | `/share <filepath>` | Share a file (up to 5MB, all types supported) |
 | `/files` | List available files for download |
 | `/download <file_id>` | Download a file to downloads/ folder |
+| `/lottery` | In-chat lottery system. Use `/lottery help` for details. |
+| `/poll` | Create a poll. e.g., `/poll "Title" | "A1" | "A2"` |
+| `/vote` | Vote in a poll. e.g., `/vote 1` |
+
+### Public Rooms
+
+Join public, less-secure chat rooms using the `enchat public <room_name>` command. These are good for casual conversation where privacy is not the primary concern.
+
+Available public rooms:
+- `lobby` - General chat and meeting place.
+- `gaming` - For discussing games and finding players.
+- `lottery` - A dedicated room for running lotteries.
 
 ### Self-Hosted ntfy
 
-Enchat works with the public ntfy.sh server by default, but that service may enforce rate limits. Hosting your own ntfy server on a VPS gives you unlimited usage and full infrastructure control. It's optional but recommended for high‑volume or sensitive communications.
+Enchat works with the public ntfy.sh server by default, but that service may enforce rate limits. Hosting your own nfy server on a VPS gives you unlimited usage and full infrastructure control. It's optional but recommended for high‑volume or sensitive communications.
 
 To get started, run the included setup script on your VPS (you'll need a domain pointing to the server):
 

@@ -6,6 +6,8 @@ import hashlib
 import json
 import sys
 from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
 
 from . import state, constants, crypto, notifications, session_key, file_transfer
 from .utils import trim
@@ -157,19 +159,135 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event):
                     if not msg: continue
 
                     ts, sender, content = msg.split("|", 2)
-                    if sender == nick: continue
+                    
+                    # Allow own SYS messages to be processed to update local state (e.g., for lottery)
+                    # but ignore own MSG, FILEMETA, etc., which are handled locally.
+                    if sender == nick and raw_type != "SYS":
+                        continue
 
                     if raw_type == "SYS":
                         evt = content.replace("SYSTEM:", "")
-                        if evt == "joined":
+                        if evt.startswith("LOTTERY_"):
+                            lottery_evt, _, extra = evt.partition(' ')
+                            lottery = state.lottery_state.get(room)
+                            
+                            if lottery_evt == "LOTTERY_START":
+                                state.lottery_state[room] = { "starter": sender, "participants": set() }
+                                start_text = Text.from_markup(f"[bold cyan]{sender}[/] kicked off a new lottery!\n\nType [bold white on magenta]/lottery enter[/] to join!")
+                                panel = Panel(start_text, title="[bold green]🎉 A New Lottery Has Started! 🎉[/]", border_style="green")
+                                buf.append(("System", panel, False))
+                            
+                            elif lottery_evt == "LOTTERY_ENTER":
+                                if lottery:
+                                    lottery["participants"].add(sender)
+                                    buf.append(("System", f"🎟️ [bold magenta]{sender}[/] has entered the lottery!", False))
+
+                            elif lottery_evt == "LOTTERY_CANCEL":
+                                if room in state.lottery_state:
+                                    del state.lottery_state[room]
+                                    cancel_text = Text("The lottery has been canceled.", justify="center")
+                                    panel = Panel(cancel_text, title="[bold yellow]Lottery Canceled[/]", border_style="yellow")
+                                    buf.append(("System", panel, False))
+
+                            elif lottery_evt == "LOTTERY_WINNER":
+                                winner = extra
+                                winner_text = Text.from_markup(f"The winning ticket belongs to...\n\n[bold white on magenta] [blink]>>>[/blink] {winner} [blink]<<<[/blink] [/]\n\nCongratulations!", justify="center")
+                                panel = Panel(winner_text, title="[bold magenta]🎉 Lottery Winner! 🎉[/]", border_style="magenta")
+                                buf.append(("System", panel, False))
+                                if room in state.lottery_state:
+                                    del state.lottery_state[room]
+                            
+                        elif evt == "joined":
                             state.room_participants.add(sender)
-                            buf.append(("System", f"{sender} joined", False))
+                            buf.append(("System", f"[dim]{sender} joined[/dim]", False))
                             notifications.notify(f"{sender} joined")
                             enqueue_sys(room, nick, "ping", server, f)
                         elif evt == "left":
                             state.room_participants.discard(sender)
-                            buf.append(("System", f"{sender} left", False))
+                            buf.append(("System", f"[dim]{sender} left[/dim]", False))
                             notifications.notify(f"{sender} left")
+
+                            # Auto-cancel lottery if starter leaves
+                            lottery = state.lottery_state.get(room)
+                            if lottery and lottery["starter"] == sender:
+                                enqueue_sys(room, nick, "LOTTERY_CANCEL", server, f)
+                                buf.append(("System", Text.from_markup(f"[yellow]The lottery was automatically canceled because the starter, [cyan]{sender}[/], left.[/]"), False))
+
+                            # Auto-close poll if starter leaves
+                            poll = state.poll_state.get(room)
+                            if poll and poll["starter"] == sender:
+                                enqueue_sys(room, nick, "POLL_CLOSE", server, f)
+                                buf.append(("System", Text.from_markup(f"[yellow]The poll was automatically closed because the starter, [cyan]{sender}[/], left.[/]"), False))
+
+                        elif evt.startswith("POLL_"):
+                            poll_evt, _, extra = evt.partition(' ')
+
+                            if poll_evt == "POLL_START":
+                                try:
+                                    poll_data = json.loads(extra)
+                                    state.poll_state[room] = {
+                                        "starter": sender,
+                                        "question": poll_data["question"],
+                                        "options": poll_data["options"],
+                                        "votes": {} # { 'option_index': {'user1', 'user2'} }
+                                    }
+                                    
+                                    options_text = ""
+                                    for i, option in enumerate(poll_data['options']):
+                                        options_text += f"  [cyan]{i+1}.[/] {option}\n"
+
+                                    poll_text = Text.from_markup(f"[bold]{poll_data['question']}[/]\n\n{options_text}\n[dim]Vote with /vote <number>[/dim]")
+                                    panel = Panel(poll_text, title=f"📊 [bold blue]Poll Started by {sender}[/]", border_style="blue", padding=(1, 2))
+                                    buf.append(("System", panel, False))
+                                except json.JSONDecodeError:
+                                    pass
+                            
+                            elif poll_evt == "POLL_VOTE":
+                                poll = state.poll_state.get(room)
+                                if poll:
+                                    choice = extra.strip()
+                                    # Remove previous vote if any
+                                    for votes in poll['votes'].values():
+                                        votes.discard(sender)
+                                    # Add new vote
+                                    if choice not in poll['votes']:
+                                        poll['votes'][choice] = set()
+                                    poll['votes'][choice].add(sender)
+                                    
+                                    option_text = poll['options'][int(choice)]
+                                    buf.append(("System", f"🗳️ [bold blue]{sender}[/] voted for: [italic]'{option_text}'[/]", False))
+
+                            elif poll_evt == "POLL_CLOSE":
+                                poll = state.poll_state.get(room)
+                                if poll:
+                                    # Calculate final results
+                                    options_text = ""
+                                    winner_text = ""
+                                    max_votes = 0
+                                    
+                                    sorted_votes = sorted(
+                                        [(len(v), k) for k, v in poll['votes'].items()],
+                                        reverse=True
+                                    )
+                                    if sorted_votes:
+                                        max_votes = sorted_votes[0][0]
+
+                                    for i, option in enumerate(poll['options']):
+                                        vote_count = len(poll['votes'].get(str(i), []))
+                                        is_winner = vote_count == max_votes and max_votes > 0
+                                        
+                                        bar = "█" * vote_count
+                                        line = f"  [cyan]{i+1}.[/] {option} [bold]({vote_count})[/] "
+                                        if is_winner:
+                                            line = f"🏆{line}"
+                                            winner_text += f"[bold magenta]{option}[/] "
+                                        options_text += line + f"[green]{bar}[/]\n"
+
+                                    final_text = Text.from_markup(f"[bold]{poll['question']}[/]\n\n{options_text}\n[bold]Winner(s): {winner_text}[/]")
+                                    panel = Panel(final_text, title="[bold blue]📊 Poll Closed - Final Results[/]", border_style="blue", padding=(1, 2))
+                                    buf.append(("System", panel, False))
+                                    del state.poll_state[room]
+
                         elif evt == "ping":
                             state.room_participants.add(sender)
                     elif raw_type == "FILEMETA":

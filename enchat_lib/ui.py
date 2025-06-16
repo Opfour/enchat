@@ -8,6 +8,7 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 from rich.align import Align
+from rich.console import Group
 
 from . import state, constants, network, commands
 from .utils import trim
@@ -54,33 +55,33 @@ class ChatUI:
             available_lines = 20
         
         messages_to_show = self.buf[-available_lines:]
-        
-        t = Text()
+        renderables = []
+
         for msg in messages_to_show:
-            # Safely unpack the message tuple
             sender, content, own = msg[0], msg[1], msg[2]
             is_mention = msg[3] if len(msg) > 3 else False
 
             if sender == "System":
-                system_line = Text("[SYSTEM] ", style="yellow")
-                if isinstance(content, Text):
-                    system_line.append(content)
+                if isinstance(content, Panel):
+                    renderables.append(content)
                 else:
-                    system_line.append(Text.from_markup(str(content)))
-                system_line.append("\n")
-                t.append(system_line)
+                    system_text = Text("[SYSTEM] ", style="yellow")
+                    if isinstance(content, Text):
+                        system_text.append(content)
+                    else:
+                        system_text.append(Text.from_markup(str(content)))
+                    renderables.append(system_text)
             else:
                 lab, st = ("You", "green") if own else (sender, "cyan")
-                
+                message_text = Text()
                 if is_mention:
-                    # Style the entire line for high visibility and readability
-                    t.append(f"{lab}: {content}\n", style="black on yellow")
+                    message_text.append(f"{lab}: {content}", style="black on yellow")
                 else:
-                    # Use the original, unchanged message style
-                    t.append(f"{lab}: ", style=st)
-                    t.append(f"{content}\n")
+                    message_text.append(f"{lab}: ", style=st)
+                    message_text.append(content)
+                renderables.append(message_text)
                 
-        return Panel(t, title=f"Messages ({len(self.buf)})", padding=(0, 1))
+        return Panel(Group(*renderables), title=f"Messages ({len(self.buf)})", padding=(0, 1))
 
     def _inp(self):
         entered = "".join(state.current_input)

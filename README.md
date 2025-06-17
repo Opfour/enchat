@@ -2,7 +2,7 @@
   <img src="https://sudosallie.com/enchat-logo-v3.png" alt="Enchat Logo" width="400">
 </div>
 
-# 🔐 Enchat - Encrypted Terminal Chat
+# 🔐 Enchat - Encrypted Under the radar Terminal Chat
 <div align="center">
   <b><a href="https://enchat.io">Website</a></b> •
   <b><a href="https://github.com/sudodevdante/enchat">GitHub</a></b>

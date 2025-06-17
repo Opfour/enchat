@@ -10,11 +10,11 @@ except ImportError:
 CONF_FILE = os.path.expanduser("~/.enchat.conf")
 DEFAULT_NTFY = "https://ntfy.sh"
 ENCHAT_NTFY = "https://enchat.sudosallie.com"
-MAX_MSG_LEN = 500
-PING_INTERVAL = 30
+MAX_MSG_LEN = 4096
+PING_INTERVAL = 25
 MAX_RETRIES = 3
 RETRY_BASE = 1
-MAX_SEEN = 500
+MAX_SEEN = 2000
 BUFFER_LIMIT = 500
 TRIM_STEP = 100
 
@@ -26,3 +26,7 @@ FILE_TEMP_DIR = os.path.join(tempfile.gettempdir(), "enchat_files")
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOWNLOADS_DIR = os.path.join(_project_root, "downloads")
 VERSION = "3.0.0-beta"
+
+KEYRING_SERVICE_NAME = "enchat"
+
+USER_TIMEOUT = 60 # seconds. Must be > PING_INTERVAL

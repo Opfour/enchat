@@ -27,6 +27,9 @@ from enchat_lib.constants import VERSION, KEYRING_AVAILABLE
 
 console = Console()
 
+# --- Globals ---
+SHUTDOWN_EVENT = threading.Event()
+
 def _render_header(title: str):
     """Renders a standardized header panel."""
     console.clear()
@@ -111,31 +114,45 @@ def first_run(args):
 def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[str, str, bool]], is_public: bool = False, is_tor: bool = False):
     """Initializes and runs the chat UI."""
     if not secret:
+        # Prompt for passphrase if not provided (e.g. on subsequent runs without keychain)
         secret = getpass(f"🔑 Passphrase for room '{room}': ")
 
     f = Fernet(crypto.gen_key(secret))
     
+    # Start the outbox worker thread
     out_stop = threading.Event()
-    threading.Thread(target=network.outbox_worker, args=(out_stop,), daemon=True).start()
+    outbox_thread = threading.Thread(target=network.outbox_worker, args=(out_stop,), daemon=True)
+    outbox_thread.start()
 
-    chat_ui = ui.ChatUI(room, nick, server, f, buf, is_public, is_tor)
+    # Pass the main shutdown event to the UI
+    chat_ui = ui.ChatUI(room, nick, server, f, buf, is_public, is_tor, SHUTDOWN_EVENT)
     
     def quit_handler(*_):
-        sys.exit(0)
+        """Signal handler for graceful shutdown."""
+        # This will trigger the exit condition in the main loop
+        SHUTDOWN_EVENT.set()
 
+    # Register signal handlers for Ctrl+C and terminal close
     signal.signal(signal.SIGINT, quit_handler)
     signal.signal(signal.SIGTERM, quit_handler)
+    signal.signal(signal.SIGHUP, quit_handler)
     
     try:
         chat_ui.run()
     finally:
+        # This block runs on any exit path: /exit, Ctrl+C, etc.
+        console.print("\n[yellow]Disconnecting...[/]")
+        
+        # 1. Enqueue the 'left' message
         network.enqueue_sys(room, nick, "left", server, f)
         
+        # 2. Wait for the outbox to be empty, ensuring the message is sent
         state.outbox_queue.join()
         
+        # 3. Stop all background threads
         out_stop.set()
         
-        console.print("\n[bold green]✓ Session closed.[/]")
+        console.print("[bold green]✓ Session closed.[/]")
 
 def join_room(args):
     """Handler for the 'join' command with an enhanced UI."""

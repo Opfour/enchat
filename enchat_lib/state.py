@@ -2,7 +2,8 @@ import queue
 from typing import Dict, Set, List, Tuple
 
 # Shared application state
-room_participants: Set[str] = set()
+# This now stores the last seen time for each participant.
+room_participants: Dict[str, float] = {}
 notifications_enabled = True
 
 # File transfer state

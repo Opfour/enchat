@@ -27,8 +27,8 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
         buf.append(("System", "[bold yellow]Message buffer cleared.[/]", False))
 
     elif cmd == "who":
-        state.room_participants.add(nick)
-        users = sorted(list(state.room_participants))
+        state.room_participants[nick] = time.time()
+        users = sorted(list(state.room_participants.keys()))
         buf.append(("System", f"[bold]=== ONLINE ({len(users)}) ===[/]", False))
         for u in users:
             if u == nick:

@@ -16,11 +16,12 @@ from .utils import trim
 from .input import start_char_thread
 
 class ChatUI:
-    def __init__(self, room, nick, server, f, buf, is_public=False, is_tor=False):
+    def __init__(self, room, nick, server, f, buf, is_public=False, is_tor=False, shutdown_event=None):
         self.room, self.nick, self.server, self.f = room, nick, server, f
         self.buf = buf
         self.is_public = is_public
         self.is_tor = is_tor
+        self.shutdown_event = shutdown_event or threading.Event()
         self.layout = Layout()
         self.layout.split(
             Layout(name="header", size=3),
@@ -31,6 +32,32 @@ class ChatUI:
         self.last_len = len(buf)
         self.last_input = ""
         self.last_terminal_size = (0, 0)
+
+    def _reaper(self):
+        """A background thread to remove users who have timed out."""
+        while not self.shutdown_event.is_set():
+            time.sleep(constants.PING_INTERVAL)
+            
+            now = time.time()
+            # Create a copy of the items to avoid dictionary size changing during iteration
+            for user, last_seen in list(state.room_participants.items()):
+                if now - last_seen > constants.USER_TIMEOUT:
+                    if user == self.nick: continue # Should not happen, but as a safeguard
+                    
+                    del state.room_participants[user]
+                    self.buf.append(("System", Text.from_markup(f"[dim]{user} left (timed out)[/dim]"), False))
+                    
+                    # Check if the timed-out user was a lottery starter
+                    lottery = state.lottery_state.get(self.room)
+                    if lottery and lottery["starter"] == user:
+                        network.enqueue_sys(self.room, self.nick, "LOTTERY_CANCEL", self.server, self.f)
+                        self.buf.append(("System", Text.from_markup(f"[yellow]The lottery was automatically canceled because the starter, [cyan]{user}[/], left.[/]"), False))
+                    
+                    # Check if the timed-out user was a poll starter
+                    poll = state.poll_state.get(self.room)
+                    if poll and poll["starter"] == user:
+                        network.enqueue_sys(self.room, self.nick, "POLL_CLOSE", self.server, self.f)
+                        self.buf.append(("System", Text.from_markup(f"[yellow]The poll was automatically closed because the starter, [cyan]{user}[/], left.[/]"), False))
 
     def _head(self):
         parts = [
@@ -113,20 +140,21 @@ class ChatUI:
 
     def run(self):
         stop_evt = threading.Event()
-        threading.Thread(target=network.listener, args=(self.room, self.nick, self.f, self.server, self.buf, stop_evt), daemon=True).start()
+        threading.Thread(target=network.listener, args=(self.room, self.nick, self.f, self.server, self.buf, stop_evt, self.shutdown_event), daemon=True).start()
+        threading.Thread(target=self._reaper, daemon=True).start()
         start_char_thread()
 
         self.buf.append(("System", f"Joined '{self.room}'", False))
         network.enqueue_sys(self.room, self.nick, "joined", self.server, self.f)
 
         def pinger():
-            while not stop_evt.is_set():
+            while not stop_evt.is_set() and not self.shutdown_event.is_set():
                 network.enqueue_sys(self.room, self.nick, "ping", self.server, self.f)
                 time.sleep(constants.PING_INTERVAL)
         threading.Thread(target=pinger, daemon=True).start()
 
         with Live(self.layout, refresh_per_second=10, screen=False) as live:
-            while True:
+            while not self.shutdown_event.is_set():
                 if len(self.buf) != self.last_len or "".join(state.current_input) != self.last_input:
                     self.redraw = True
                     self.last_len = len(self.buf)
@@ -159,6 +187,7 @@ class ChatUI:
                 
                 if line.startswith("/"):
                     if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.is_public, self.is_tor) == "exit":
+                        self.shutdown_event.set()
                         break
                 else:
                     if len(line) > constants.MAX_MSG_LEN:

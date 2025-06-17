@@ -117,19 +117,20 @@ def outbox_worker(stop_evt: threading.Event):
         finally:
             state.outbox_queue.task_done()
 
-def listener(room, nick, f, server, buf, stop_evt: threading.Event):
+def listener(room, nick, f, server, buf, stop_evt: threading.Event, shutdown_event: threading.Event):
     """Worker thread for listening to SSE events."""
     url = f"{server}/{room}/raw?x-sse=true&since=-30m&poll=65"
     headers = {"Accept": "text/event-stream", "Cache-Control": "no-cache"}
     seen: set[str] = set()
-    join_ts = int(time.time())
-    state.room_participants.add(nick)
     
-    while not stop_evt.is_set():
+    # Add self to the participant list with current time
+    state.room_participants[nick] = time.time()
+    
+    while not stop_evt.is_set() and not shutdown_event.is_set():
         try:
             with session.get(url, stream=True, timeout=(5, None), headers=headers) as resp:
                 for raw in resp.iter_lines(decode_unicode=True, chunk_size=1):
-                    if stop_evt.is_set(): return
+                    if stop_evt.is_set() or shutdown_event.is_set(): return
                     if not raw: continue
 
                     h = hashlib.sha256(raw.encode()).hexdigest()
@@ -198,26 +199,15 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event):
                                     del state.lottery_state[room]
                             
                         elif evt == "joined":
-                            state.room_participants.add(sender)
+                            state.room_participants[sender] = time.time()
                             buf.append(("System", f"[dim]{sender} joined[/dim]", False))
                             notifications.notify(f"{sender} joined")
                             enqueue_sys(room, nick, "ping", server, f)
                         elif evt == "left":
-                            state.room_participants.discard(sender)
+                            if sender in state.room_participants:
+                                del state.room_participants[sender]
                             buf.append(("System", f"[dim]{sender} left[/dim]", False))
                             notifications.notify(f"{sender} left")
-
-                            # Auto-cancel lottery if starter leaves
-                            lottery = state.lottery_state.get(room)
-                            if lottery and lottery["starter"] == sender:
-                                enqueue_sys(room, nick, "LOTTERY_CANCEL", server, f)
-                                buf.append(("System", Text.from_markup(f"[yellow]The lottery was automatically canceled because the starter, [cyan]{sender}[/], left.[/]"), False))
-
-                            # Auto-close poll if starter leaves
-                            poll = state.poll_state.get(room)
-                            if poll and poll["starter"] == sender:
-                                enqueue_sys(room, nick, "POLL_CLOSE", server, f)
-                                buf.append(("System", Text.from_markup(f"[yellow]The poll was automatically closed because the starter, [cyan]{sender}[/], left.[/]"), False))
 
                         elif evt.startswith("POLL_"):
                             poll_evt, _, extra = evt.partition(' ')
@@ -289,7 +279,7 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event):
                                     del state.poll_state[room]
 
                         elif evt == "ping":
-                            state.room_participants.add(sender)
+                            state.room_participants[sender] = time.time()
                     elif raw_type == "FILEMETA":
                         try:
                             metadata = json.loads(content)
@@ -301,7 +291,7 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event):
                             file_transfer.handle_file_chunk(chunk_data, sender, buf)
                         except json.JSONDecodeError: pass
                     else:  # MSG
-                        state.room_participants.add(sender)
+                        state.room_participants[sender] = time.time()
                         
                         is_mention = f"@{nick}" in content
                         if is_mention:

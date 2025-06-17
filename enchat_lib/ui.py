@@ -16,8 +16,8 @@ from .utils import trim
 from .input import start_char_thread
 
 class ChatUI:
-    def __init__(self, room, nick, server, f, buf, is_public=False, is_tor=False, shutdown_event=None):
-        self.room, self.nick, self.server, self.f = room, nick, server, f
+    def __init__(self, room, nick, server, f, buf, secret, is_public=False, is_tor=False, shutdown_event=None):
+        self.room, self.nick, self.server, self.f, self.secret = room, nick, server, f, secret
         self.buf = buf
         self.is_public = is_public
         self.is_tor = is_tor
@@ -186,7 +186,7 @@ class ChatUI:
                     continue
                 
                 if line.startswith("/"):
-                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.is_public, self.is_tor) == "exit":
+                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.secret, self.is_public, self.is_tor) == "exit":
                         self.shutdown_event.set()
                         break
                 else:

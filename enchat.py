@@ -21,7 +21,7 @@ from rich.align import Align
 
 # Local modules from enchat_lib
 from enchat_lib import (
-    config, constants, crypto, network, secure_wipe, ui, public_rooms, state
+    config, constants, crypto, network, secure_wipe, ui, public_rooms, state, link_sharing
 )
 from enchat_lib.constants import VERSION, KEYRING_AVAILABLE
 
@@ -124,8 +124,8 @@ def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[s
     outbox_thread = threading.Thread(target=network.outbox_worker, args=(out_stop,), daemon=True)
     outbox_thread.start()
 
-    # Pass the main shutdown event to the UI
-    chat_ui = ui.ChatUI(room, nick, server, f, buf, is_public, is_tor, SHUTDOWN_EVENT)
+    # Pass the main shutdown event and room secret to the UI
+    chat_ui = ui.ChatUI(room, nick, server, f, buf, secret, is_public, is_tor, SHUTDOWN_EVENT)
     
     def quit_handler(*_):
         """Signal handler for graceful shutdown."""
@@ -233,6 +233,36 @@ def join_public_room(args):
     console.print(f"\n[green]Connecting to '{room_alias}' as '{display_name}'...[/]")
     start_chat(room_name, display_name, secret, server, [], is_public=True, is_tor=args.tor)
 
+def join_from_link(args):
+    """Handler for joining a room from a one-time-use link."""
+    _render_header("Join via Secure Link")
+    console.print(f"🔗 Attempting to use link: {args.link_url}")
+
+    parsed = link_sharing.parse_share_url(args.link_url)
+    if not parsed:
+        console.print("[bold red]Error: The provided link is malformed.[/]")
+        return
+        
+    session_id, key = parsed
+    
+    payload = link_sharing.get_remote_payload(session_id)
+    if not payload:
+        console.print("[bold red]Error: Could not retrieve room details.[/]")
+        console.print("[dim]This link may have expired or has already been used.[/dim]")
+        return
+        
+    try:
+        room_name, server, secret = link_sharing.decrypt_credentials(payload, key)
+    except Exception:
+        console.print("[bold red]Error: Failed to decrypt room details. The link may be corrupt.[/]")
+        return
+        
+    console.print(f"[bold green]✓ Successfully retrieved room details for '[cyan]{room_name}[/]'[/]")
+    console.print(f"🌍 Connecting via server: [bold cyan]{server}[/]")
+    
+    display_name = Prompt.ask("👤 Your Nickname")
+    
+    start_chat(room_name, display_name, secret, server, [], is_tor=args.tor)
 
 def main():
     """Main entry point: parses arguments and starts the correct action."""
@@ -267,6 +297,10 @@ def main():
         choices=list(public_rooms.PUBLIC_ROOMS.keys()) + [None],
         help='Name of the public room to join. If omitted, a list will be shown.'
     )
+
+    # Join from link command
+    join_link_parser = subparsers.add_parser('join-link', help='Join a room using a secure, one-time link.')
+    join_link_parser.add_argument('link_url', help='The full enchat share link.')
 
     # Maintenance commands
     reset_parser = subparsers.add_parser('reset', help='Clear saved room settings and keys.')
@@ -307,6 +341,10 @@ def main():
         join_public_room(args)
         return
         
+    if args.command == 'join-link':
+        join_from_link(args)
+        return
+
     # Default action: run with config or do first-time setup
     if args.tor:
         network.configure_tor()

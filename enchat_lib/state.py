@@ -26,3 +26,6 @@ lottery_state: Dict[str, dict] = {}
 
 # In-memory state for polls, keyed by room name
 poll_state: Dict[str, dict] = {}
+
+# For link sharing
+last_generated_link = ""

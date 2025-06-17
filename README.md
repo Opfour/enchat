@@ -1,8 +1,13 @@
 <div align="center">
-  <img src="https://sudosallie.com/enchat-logo-v2.png" alt="Enchat Logo" width="400">
+  <img src="https://sudosallie.com/enchat-logo-v3.png" alt="Enchat Logo" width="400">
 </div>
 
 # 🔐 Enchat - Encrypted Terminal Chat
+<div align="center">
+  <b><a href="https://enchat.io">Website</a></b> •
+  <b><a href="https://github.com/sudodevdante/enchat">GitHub</a></b>
+</div>
+
 [![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 
 **Enchat** brings **end-to-end encrypted communication** directly to your terminal, enabling completely private conversations without corporate surveillance or data harvesting. Built on a zero-trust architecture, Enchat ensures that your messages are cryptographically protected and invisible to servers, governments, and eavesdroppers.
@@ -182,8 +187,14 @@ Enchat is a free, open-source project developed in my spare time. If you find it
 ---
 
 ## 📜 License
-Copyright © 2025 sudodevdante All rights reserved.
+Copyright © 2025 sudodevdante. All rights reserved.
 
-Permission is granted to any user to install and execute this Software for internal purposes only. Redistribution, modification, decompilation or any other use is prohibited without prior written consent of the copyright holder.
+Permission is granted to any user to install and execute this Software for personal and internal non-commercial use only.
 
-THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND… 
+Commercial use — including use by companies, organizations, or any for-profit entities — is strictly prohibited without prior written permission and a valid commercial license from the copyright holder.
+
+Redistribution, modification, decompilation, or any other use is also prohibited without prior written consent.
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+For commercial use or enterprise licensing, please contact info@enchat.io for pricing and terms. 

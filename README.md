@@ -1,455 +1,200 @@
 <div align="center">
-  <img src="https://sudosallie.com/enchatlogo.png" alt="Enchat Logo" width="400">
+  <img src="https://sudosallie.com/enchat-logo-v3.png" alt="Enchat Logo" width="400">
 </div>
 
-# 🔐 Enchat - Encrypted Under The Radar Chat
+# 🔐 Enchat - Encrypted Under The Radar Terminal Chat
+<div align="center">
+  <b><a href="https://enchat.io">Website</a></b> •
+  <b><a href="https://github.com/sudodevdante/enchat">GitHub</a></b>
+</div>
+
 [![Python 3.6+](https://img.shields.io/badge/python-3.6+-blue.svg)](https://www.python.org/downloads/)
 
-**Enchat** brings **end-to-end encrypted communication** directly to your terminal, enabling completely private conversations without corporate surveillance or data harvesting. Chat securely with colleagues, friends, or team members knowing that your messages are **cryptographically protected** and invisible to servers, governments, and eavesdroppers.
+**Enchat** brings **end-to-end encrypted communication** directly to your terminal, enabling completely private conversations without corporate surveillance or data harvesting. Built on a zero-trust architecture, Enchat ensures that your messages are cryptographically protected and invisible to servers, governments, and eavesdroppers.
 
-**Why Enchat?** Because your conversations deserve better than Big Tech's "encrypted" platforms that still profile you, track you, and own your data. Take back control with a tool that's **truly private by design** - no accounts, no tracking, no compromises.
+**Why Enchat?** Because your privacy deserves better. Take back control with a tool that's truly private by design—no accounts, no tracking, no compromises.
 
-## 🔒 Security & Encryption
+## ✨ Core Features
+- **Real-Time Encrypted Chat:** Secure, real-time messaging with timestamps and user presence indicators.
+- **Secure Room & File Sharing:** Invite users with temporary, zero-knowledge links and share files with end-to-end encryption.
+- **Perfect Forward Secrecy (PFS):** Chat sessions use ephemeral keys, ensuring past conversations remain secure even if a room's passphrase is compromised.
+- **Tor Support:** Enhance your anonymity by routing all traffic through the Tor network.
+- **Zero-Knowledge Architecture:** Servers act as blind message relays and have zero knowledge of your message content, files, or room passphrases.
+- **Cross-Platform:** A consistent and powerful terminal experience on macOS, Linux, and Windows.
 
-### **How Your Messages Stay Safe**
-- **End-to-end encryption** using AES-256 in CBC mode with HMAC-SHA256 and PBKDF2-based key derivation for enhanced security
-- **Automatic session-based encryption** - Each chat session silently generates and uses a unique temporary key
-- **Perfect Forward Secrecy** - When a session ends, its messages become permanently unreadable - even with the passphrase
-- **Double-layer encryption** - Messages are automatically encrypted with both session keys and room-specific keys
-- **Client-side encryption** - All encryption happens on your device before transmission
-- **Server blindness** - ntfy servers only see encrypted blobs, never plaintext
-- **Authenticated encryption** - prevents message tampering and ensures integrity
-- **Strong key derivation** - PBKDF2-HMAC-SHA256 with 100,000 iterations and static salt
-- **Seamless key rotation** - New session keys are automatically generated whenever a room becomes empty
-- **Invisible key exchange** - New participants automatically receive encrypted session keys without user interaction
-- **Isolated sessions** - Different passphrases create completely separate chat environments
-- **No stored keys** - Session keys are never saved to disk in plain text
-- **Metadata protection** - usernames, timestamps, and system events are also encrypted
-- **Privacy by design** - no personal information stored or transmitted in plaintext
-
-### **Why Messages Cannot Be Intercepted**
-Even if an attacker:
-- Has the room passphrase
-- Captures all network traffic
-- Compromises the server
-- Gains access to stored files
-
-They still cannot read messages because:
-1. Each message is encrypted with a temporary session key
-2. Session keys only exist during active chat sessions
-3. Session keys are never stored in plain text
-4. When a session ends, its messages become permanently unreadable
-
-### **Message Flow Security**
-```
-Your Message → [Session Key Encrypt] → [Room Key Encrypt] → Encrypted Blob → ntfy Server → Encrypted Blob → [Room Key Decrypt] → [Session Key Decrypt] → Recipient
-```
-
-The ntfy server acts as a **blind message relay** - it cannot decrypt your messages without both:
-- The room passphrase
-- AND the temporary session key (which is automatically managed)
-Even if the server is compromised, your conversations remain secure.
-
-### **User Experience**
-All you need to remember is your room passphrase - Enchat handles all the complex security automatically:
-- Session keys are generated and exchanged invisibly
-- Key rotation happens seamlessly when rooms empty
-- New participants get access automatically when they join
-- No additional passwords or keys to manage
-
-### **Privacy Guarantees**
-- 🔐 **Zero knowledge** - servers never see message content, usernames, timestamps, or file data
-- 🎭 **Anonymous** - no accounts or personal information required
-- 🛡️ **Metadata protection** - join/leave events, system messages, and filenames encrypted
-- 🧹 **Clean exit** - secure wipe removes all traces including downloaded files
-- 📱 **Secure notifications** - desktop alerts never show message or file content
-- 📁 **File privacy** - file transfers use same AES-256 encryption as messages
-
-## ✨ Features
-
-- **Real-time encrypted chat** with timestamps and status indicators
-- **🔒 Encrypted file sharing** with chunked transfer up to 5MB per file
-- **🧅 Tor support** for enhanced anonymity
-- **Multiple server options** including dedicated enchat server
-- **Self-hosted ntfy support** for complete infrastructure control
-- **Auto-reconnection** with smart retry logic
-- **Desktop notifications** (Linux, macOS)
-- **Command system** (`/help`, `/clear`, `/exit`, `/server`, `/who`, `/share`, `/files`, `/download`)
-- **Smart input handling** and message validation
-- **Cross-platform** terminal support
+---
 
 ## 🚀 Quick Start
 
 ### Installation
-
-#### Linux/macOS Installation (Recommended)
+The recommended installation method uses our `install.sh` script, which automatically handles dependencies and sets up a global `enchat` command.
 
 ```bash
 # Clone the repository
 git clone https://github.com/sudodevdante/enchat.git
 cd enchat
 
-# Run the installer (inspect install-enchat.sh first if you want)
-./install-enchat.sh
+# Run the installer (feel free to inspect it first)
+./install.sh
 ```
+*For manual installation instructions, see the repository wiki.*
 
-The installer provides:
-- ✅ **Automatic dependency management** (Python, pip packages)
-- ✅ **Global `enchat` command** (works from anywhere)
-- ✅ **Secure wipe functionality** (`enchat wipe` removes all traces)
-- ✅ **Desktop notifications** (Linux notify-send, macOS osascript)
+### Ways to Start Enchat
 
-#### Manual Installation (All Platforms)
+| Command | Description |
+|---|---|
+| `enchat` | Start the interactive setup to create or join a room. |
+| `enchat join-link <url>` | Join a room directly using a secure invitation link. |
+| `enchat reset` | Resets all saved room configurations. |
+| `enchat kill` | Securely wipes all Enchat data from your device. |
 
-```bash
-# Clone or download
-git clone https://github.com/sudodevdante/enchat.git
-cd enchat
-
-# Install dependencies (keyring is optional but recommended)
-pip install requests colorama cryptography keyring
-
-# Make executable (Linux/macOS only)
-chmod +x enchat.py
-
-# Run enchat
-python enchat.py
-```
-
-#### Windows Users
-
-If you don't have `git`, download the repository as a ZIP file from GitHub, extract it, then:
-
-```powershell
-cd enchat
-pip install requests colorama cryptography keyring
-python enchat.py
-```
-
-### First Run
+### Creating or Joining a Room
+To start a new chat, simply run `enchat` and follow the on-screen prompts.
 
 ```bash
 enchat
 ```
+You will be guided through setting a room name, a nickname, and a strong encryption passphrase.
 
-Setup interface:
+### Joining with an Invitation Link
+If you've received a secure link, use the `join-link` command:
+```bash
+enchat join-link "https://share.enchat.io/s/AbCdEfGh#key-material-here"
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           ENCRYPTED TERMINAL CHAT                           │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-Welcome to Enchat! Let's set up your encrypted chat.
-
-🏠 Room name (unique, secret): my-secret-room
-👤 Your nickname: alice
-🔐 Encryption passphrase (hidden): ••••••••
-
-🌐 Select a ntfy server:
-  1) Enchat ntfy server (https://enchat.sudodevdante.com) - Recommended
-     - Dedicated server for enchat with generous limits
-  2) Default ntfy server (https://ntfy.sh)
-     - Public server with rate limits
-  3) Custom server
-     - Your own or another ntfy server
-Enter choice [1-3] (default: 1): 1
-
-💾 Save settings for auto-reconnect? [Y/n]: y
-```
-
-### Chat Interface
 
 <div align="center">
   <img src="https://sudosallie.com/enchat.png" alt="Enchat Interface" width="800">
 </div>
 
-## 📁 Encrypted File Sharing
+---
 
-Enchat supports **secure, end-to-end encrypted file transfer** using the same AES-256 encryption as your messages. Share documents, images, code, and any file type up to 5MB with complete privacy.
+## 🤝 Sharing & Collaboration
 
-### **🔒 File Transfer Security**
-- **End-to-end encryption** - Files are encrypted into 6KB chunks before transmission
-- **Zero server knowledge** - ntfy servers only see encrypted blobs, never file content or names
-- **Integrity verification** - SHA256 hash verification ensures perfect file reconstruction
-- **Directory traversal protection** - Filenames are sanitized to prevent malicious path injection
-- **Secure cleanup** - Temporary files are automatically removed after download
+Enchat provides powerful, secure tools for inviting users and sharing files without compromising on privacy.
 
-### **📋 File Sharing Commands**
+### Inviting Users to Private Rooms (Securely & Easily)
+Forget manually sharing secret passphrases. Enchat's link-sharing system allows you to generate temporary, secure invitation links.
 
-| Command | Description | Example |
-|---------|-------------|---------|
-| `/share <filepath>` | Upload and share a file | `/share ~/document.pdf` |
-| `/files` | List available files for download | `/files` |
-| `/download <file_id>` | Download a file to `downloads/` folder | `/download a1b2c3d4` |
+**How it Works (Zero-Knowledge Architecture):**
+1.  You run `/share-room`.
+2.  Your client **locally encrypts** the room's credentials (name + passphrase) with a new, single-use key.
+3.  This encrypted data is sent to the link server (`share.enchat.io`).
+4.  The secret key is appended to the URL after a `#` (a URL fragment), which **never leaves your client**.
+5.  When a new user joins with the link, their client fetches the encrypted blob and uses the key from the URL fragment to decrypt it locally.
 
-### **🚀 File Sharing Workflow**
+The server only ever stores an encrypted, meaningless blob of data, making the entire process **zero-knowledge**.
 
-#### **1. Upload a File**
+#### **1. Generate the Link**
+Use the `/share-room` command. You can control the link's lifetime (`--ttl`) and number of uses (`--uses`). The generated link will be displayed in a panel.
 ```bash
-💬 > /share ~/presentation.pdf
-🔍 Preparing to share: /Users/alice/presentation.pdf
-📤 Sharing: presentation.pdf (2.1MB, 347 chunks)
-   File ID: a1b2c3d4 (also in your /files for reference)
-📤 Upload progress: 10% (35/347)
-📤 Upload progress: 50% (174/347)
-📤 Upload progress: 100% (347/347)
-✅ Upload complete: presentation.pdf
+> /share-room --uses 2 --ttl 1h
 ```
 
-#### **2. View Available Files**
+#### **2. Copy the Link**
+A confirmation panel will appear. To prevent copy-paste errors with long URLs, simply use the `/copy-link` command.
 ```bash
-💬 > /files
-📂 AVAILABLE FILES (2)
-  a1b2c3d4: presentation.pdf (2.1MB) from alice (you) - ✅ Ready
-  x7y9z2w5: report.docx (0.5MB) from bob - ✅ Ready
+> /copy-link
 ```
 
-#### **3. Download a File**
-```bash
-💬 > /download a1b2c3d4
-✅ Downloaded: presentation.pdf (2.1MB)
-📁 Saved to: downloads/presentation.pdf
-```
+### Sharing Files Securely
+Share documents, images, and other files with the same end-to-end encryption used for messages.
 
-### **📊 File Transfer Specifications**
-
-| **Specification** | **Limit/Details** |
-|-------------------|-------------------|
-| **Maximum file size** | **5MB per file** |
-| **Supported file types** | **All types** (binary safe) |
-| **Chunk size** | **6KB** (optimal for ntfy) |
-| **Concurrent transfers** | **100+ files** (RAM limited) |
-| **Download location** | **`downloads/` folder** |
-| **File name conflicts** | **Auto-rename** (`file_1.txt`) |
-
-### **🗂️ Supported File Types**
-
-Enchat's binary-safe encryption supports **all file types**:
-
-- **📄 Documents**: PDF, DOCX, TXT, MD, RTF
-- **🖼️ Images**: JPG, PNG, GIF, SVG, BMP, TIFF
-- **🎵 Audio**: MP3, WAV, FLAC, M4A, OGG
-- **🎬 Video**: MP4, AVI, MKV, MOV, WMV
-- **💾 Archives**: ZIP, TAR.GZ, RAR, 7Z
-- **💻 Code**: PY, JS, CPP, JAVA, GO, RS
-- **📊 Data**: JSON, CSV, XML, SQL, YAML
-- **⚙️ Executables**: EXE, APP, DEB, DMG, MSI
-
-### **🔧 File Transfer Security Details**
-
-#### **Encryption Process**
-```
-Original File → [Split into 6KB chunks] → [AES-256 encrypt each chunk] 
-→ [Send via ntfy] → [Receive chunks] → [Decrypt chunks] → [Verify SHA256] 
-→ [Reconstruct file] → [Save to downloads/]
-```
-
-#### **Security Guarantees**
-- ✅ **Server blindness** - ntfy servers cannot decrypt file content
-- ✅ **Metadata protection** - filenames encrypted in transit
-- ✅ **Integrity verification** - SHA256 hash prevents corruption
-- ✅ **Path injection protection** - filenames sanitized against `../../../` attacks
-- ✅ **Memory cleanup** - chunks removed from memory after download
-- ✅ **Temp file cleanup** - secure removal of temporary files
-
-### **⚡ Performance & Limits**
-
-#### **Transfer Speed**
-- **Small files (< 1MB)**: ~10-20 seconds
-- **Medium files (1-3MB)**: ~30-60 seconds  
-- **Large files (3-5MB)**: ~1-3 minutes
-
-*Speed depends on ntfy server limits and network connection*
-
-#### **Recommended Usage**
-- **ntfy.sh**: Up to 5MB, occasional use
-- **enchat.sudodevdante.com**: Up to 5MB, regular use
-- **Self-hosted ntfy**: Up to 25MB+ (configurable)
-
-### **🛡️ File Sharing Best Practices**
-
-✅ **Security:**
-- Only share files with trusted room participants
-- Verify file integrity after download (files include SHA256 verification)
-- Use strong room passphrases when sharing sensitive files
-- Consider self-hosting ntfy for highly sensitive files
-
-✅ **Performance:**
-- Keep files under 5MB for optimal transfer speed
-- Use file compression (ZIP) for multiple small files
-- Avoid sharing files during high network congestion
-
-⚠️ **Important Notes:**
-- Files are stored in memory during transfer - avoid sharing too many large files simultaneously
-- Downloaded files go to `downloads/` folder and are excluded from git
-- File transfers use the same encryption as messages - same security level
-
-## 🛠️ Configuration
-
-### Command Line Options
-
-```bash
-enchat --help                                    # Show help
-enchat --reset                                   # Clear saved settings
-enchat --server https://your-ntfy.example.com   # Use custom ntfy server
-enchat --enchat-server                          # Use dedicated enchat server
-enchat --default-server                         # Use default ntfy.sh server
-enchat wipe                                      # Securely remove all traces
-```
-
-### Server Options
-
-Enchat supports multiple ntfy servers:
-
-1. **Dedicated Enchat Server** (enchat.sudodevdante.com) - **Default & Recommended**
-   - Optimized for chat with generous rate limits
-   - Best performance and reliability for enchat
-
-2. **Default Server** (ntfy.sh)
-   - Public server with rate limits
-   - Good for occasional use
-
-3. **Self-Hosted Server**
-   - Complete control over infrastructure
-   - Unlimited usage with no rate limits
-   - Best for sensitive or high-volume communications
-
-You can select your server during initial setup or use command line options to specify.
-
-### In-Chat Commands
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show available commands |
-| `/clear` | Clear screen |
-| `/exit` | Leave chat |
-| `/who` | Show all active room participants |
-| `/stats` | Session statistics and encryption info |
-| `/security` | Detailed security and privacy overview |
-| `/server` | Display current server information |
-| `/notifications` | Toggle desktop notifications on/off |
-| `/share <filepath>` | Share a file (up to 5MB, all types supported) |
-| `/files` | List available files for download |
-| `/download <file_id>` | Download a file to downloads/ folder |
-
-### Self-Hosted ntfy
-
-Enchat works with the public ntfy.sh server by default, but that service may enforce rate limits. Hosting your own ntfy server on a VPS gives you unlimited usage and full infrastructure control. It's optional but recommended for high‑volume or sensitive communications.
-
-To get started, run the included setup script on your VPS (you'll need a domain pointing to the server):
-
-```bash
-# On your VPS
-./setup-selfhosted-ntfy-server.sh
-```
-
-This script installs and configures ntfy (via Docker or a systemd service), obtains TLS certificates from Let's Encrypt, and sets up a service ready to serve at your domain (e.g., `ntfy.yourdomain.com`).
-
-Once your ntfy server is running, point Enchat to it:
-
-```bash
-enchat --server https://your-ntfy-domain.com
-```
-
-## 🔧 How It Works
-
-**Architecture:**
-```
-Alice ←→ [Encrypted Channel] ←→ ntfy Server ←→ [Encrypted Channel] ←→ Bob
-```
-
-1. **Message encryption** happens on your device using your shared passphrase
-2. **Encrypted data** is sent to ntfy server (never plaintext)
-3. **Server relays** the encrypted blob without decryption capability
-4. **Recipients decrypt** using the same passphrase
-
-**Security Properties:**
-- Server compromise doesn't expose message content
-- Network sniffing only reveals encrypted data
-- Forward secrecy through unique room sessions
-- Message authentication prevents tampering
-
-## 🔒 Security Best Practices
-
-✅ **Recommended:**
-- Use strong passphrases (12+ characters)
-- Share room details through secure channels
-- Use different rooms for different groups
-- Self-host for sensitive communications
-
-⚠️ **Important:**
-- All participants need the exact same passphrase
-- Room names are case-sensitive
-- Don't reuse room names across different conversations
-
-### Configuration Security
-
-Settings are stored in `~/.enchat.conf`. Secure this file:
-```bash
-chmod 600 ~/.enchat.conf
-```
-
-For maximum security, don't save your passphrase (choose 'n' during setup).
-
-## 📋 Requirements
-
-- **Python 3.6+**
-- **Dependencies:** `requests`, `colorama`, `cryptography`
-- **Optional:** `keyring` (for secure passphrase storage in system keychain)
-- **Platforms:** Linux, macOS, Windows (full feature parity across all platforms)
-- **Storage:** ~10MB free space for `downloads/` folder (auto-created, git-ignored)
-
-## 🐛 Troubleshooting
-
-**Connection Issues:**
-- Verify internet connection and ntfy server accessibility
-- If using `--tor`, ensure the Tor service is running locally on port 9050.
-- Try default ntfy.sh if custom server fails
-
-**Rate Limiting Issues:**
-- If you see HTTP 429 errors, the server is rate limiting your requests
-- Rate limiting is automatically handled with smart retry logic
-- Consider switching to the enchat server with `--enchat-server`
-- For high-volume use, set up your own ntfy server
-
-**Encryption Issues:**
-- Ensure exact passphrase match across all participants
-- Check for typos in room names (case-sensitive)
-
-**Display Issues:**
-- Ensure terminal supports Unicode characters
-- Update terminal emulator for proper color support
-- **Windows:** Use Windows Terminal or PowerShell for best experience
-
-**File Transfer Issues:**
-- Large file transfers may take several minutes - be patient
-- If upload fails, check file size (max 5MB) and file permissions
-- Files are saved to `downloads/` folder in the enchat directory
-- For transfer errors, try again or check server connectivity with `/server`
-
-**Windows-Specific:**
-- Run installer with: `powershell -ExecutionPolicy Bypass -File install-enchat.ps1`
-- Toast notifications require Windows 10 or later
-- Use Windows Terminal for optimal Unicode/color support
-- PowerShell history cleaning happens automatically with `enchat wipe`
-- File paths: Use forward slashes or escape backslashes: `/share C:/file.txt` or `/share C:\\file.txt`
-
-## 📄 License
-
-Copyright © 2025 sudodevdante All rights reserved.
-
-Permission is granted to any user to install and execute this Software
-for internal purposes only. Redistribution, modification, decompilation
-or any other use is prohibited without prior written consent of the
-copyright holder.
-
-THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND…
-
-## 🙏 Acknowledgments
-
-- [ntfy.sh](https://ntfy.sh) for secure notification infrastructure
-- [cryptography](https://cryptography.io/) for robust encryption implementation
+-   **End-to-End Encrypted:** Files are encrypted into small chunks on your machine before being sent.
+-   **Zero Server Knowledge:** The server only sees encrypted data, never the file's content or its name.
+-   **Integrity Verification:** A SHA256 hash check ensures files are delivered without corruption.
 
 ---
 
-**Secure terminal communication made simple**
+## ⌨️ All In-Chat Commands
 
+| Command | Description | Example |
+|---|---|---|
+| **Room & Sharing** | | |
+| `/share-room` | Generate a secure, temporary link to invite users. | `/share-room --uses 1 --ttl 10m` |
+| `/copy-link` | Copy the last generated room link to the clipboard. | `/copy-link` |
+| `/who` | List all users currently in the room. | `/who` |
+| `/server` | Display the status of the connected message server. | `/server` |
+| `/exit` | Gracefully leave the chat and exit Enchat. | `/exit` |
+| **File Transfers** | | |
+| `/share` | Securely share a file with the room. | `/share ~/documents/report.pdf` |
+| `/files` | List all files available for download. | `/files` |
+| `/download` | Download a file by its ID. | `/download a1b2c3d4` |
+| **Utilities** | | |
+| `/help` | Show the help message with all available commands. | `/help` |
+| `/clear` | Clear all messages from the terminal window. | `/clear` |
+| `/security` | Display an overview of the current security settings. | `/security` |
+| `/notifications` | Toggle desktop notifications on or off. | `/notifications` |
+| **Fun & Polls** | | |
+| `/lottery <cmd>` | Run a lottery (`start`, `enter`, `draw`, `status`, `cancel`). | `/lottery start` |
+| `/poll` | Create a poll for the room. | `/poll "Q?" \| "Opt1" \| "Opt2"` |
+| `/vote` | Cast your vote in an active poll. | `/vote 1` |
+
+---
+
+## 🔒 Security Deep Dive
+
+Enchat is built on a foundation of **defense-in-depth** and **zero-trust** principles.
+
+- **End-to-End Encryption:** `AES-256-GCM` for authenticated encryption of all messages and files.
+- **Key Derivation:** `PBKDF2-HMAC-SHA256` with 100,000 iterations protects your passphrase against brute-force attacks.
+- **Perfect Forward Secrecy (PFS):** Each session uses a unique, ephemeral encryption key. Once a session ends, the key is gone forever, rendering past messages inaccessible even if the main room passphrase is stolen.
+- **Double-Layer Encryption:** Messages are first encrypted with the ephemeral session key, and the result is then encrypted again with the main room key.
+- **Server Blindness:** The `ntfy.sh` server (or your self-hosted instance) acts as a blind message relay. It only ever sees encrypted blobs of data and has no ability to decrypt message content, usernames, timestamps, or file data.
+- **Metadata Protection:** All metadata, including timestamps, usernames, and system events (like joins/leaves), is fully encrypted.
+- **Secure Wipe:** The `enchat kill` command securely wipes all local configuration files, logs, and downloaded content.
+
+### Message Flow Security
+```
+Your Message → [PFS Session Key Encrypt] → [Room Key Encrypt] → Encrypted Blob → ntfy Server → Encrypted Blob → [Room Key Decrypt] → [PFS Session Key Decrypt] → Recipient
+```
+An attacker would need to compromise **both** the main room passphrase **and** the active, in-memory-only session key to view messages in transit—a near-impossible task.
+
+---
+
+## 🔧 For Developers
+
+### Self-Hosting
+For maximum security and control, you can self-host your own `ntfy.sh` message server. While you can configure a server manually, this repository includes an automated script to make it easy.
+
+On a fresh Debian or Ubuntu server, simply run:
+```bash
+# Downloads and executes the setup script
+wget -O - https://raw.githubusercontent.com/sudodevdante/enchat/master/setup-selfhosted-ntfy-server.sh | bash
+```
+This script will install Docker, configure `ntfy`, set up SSL with Let's Encrypt, and harden the server for production use. Once complete, just point Enchat to your own domain during the initial setup.
+
+### Codebase
+The code is designed to be readable and auditable. We encourage security researchers to review the implementation and report any potential vulnerabilities.
+-   **`enchat.py`**: Main application entry point and UI handler.
+-   **`enchat_lib/`**: Core logic for the application.
+    -   `crypto.py`: Handles all encryption, decryption, and key derivation.
+    -   `network.py`: Manages connections, message listeners, and the outbox queue.
+    -   `commands.py`: Implements all `/` command logic.
+    -   `file_transfer.py`: Manages secure file chunking, transfer, and reassembly.
+    -   `link_sharing.py`: Powers the zero-knowledge room invitation system.
+-   **`install.sh`**: The installer script for easy setup.
+-   **`requirements.txt`**: A list of all Python dependencies.
+
+Your contributions are welcome! Please open a GitHub issue to discuss any proposed changes.
+
+---
+
+## ❤️ Donate & Support
+Enchat is a free, open-source project developed in my spare time. If you find it useful, please consider supporting its development. Your support helps cover server costs and allows me to dedicate more time to new features and security audits.
+
+<a href='https://ko-fi.com/W7W31GIAJM' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi2.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+
+---
+
+## 📜 License
+Copyright © 2025 sudodevdante. All rights reserved.
+
+Permission is granted to any user to install and execute this Software for personal and internal non-commercial use only.
+
+Commercial use — including use by companies, organizations, or any for-profit entities — is strictly prohibited without prior written permission and a valid commercial license from the copyright holder.
+
+Redistribution, modification, decompilation, or any other use is also prohibited without prior written consent.
+
+THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+
+For commercial use or enterprise licensing, please contact info@enchat.io for pricing and terms. 

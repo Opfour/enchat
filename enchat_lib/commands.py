@@ -1,14 +1,25 @@
 import os
 import time
 import shutil
+import random
+import json
+import shlex
+import sys
 
 from rich.text import Text
+from rich.panel import Panel
+from rich.markup import escape
 
-from . import state, constants, session_key, file_transfer
+from . import state, constants, session_key, file_transfer, link_sharing
 from .utils import trim
 from .network import enqueue_msg, enqueue_sys
+from .clipboard import copy_to_clipboard
 
-def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, is_public: bool = False, is_tor: bool = False):
+# In-memory state for lotteries, keyed by room name
+# This is a simple implementation and will reset if the client restarts.
+lottery_state = {}
+
+def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, secret: str, is_public: bool = False, is_tor: bool = False):
     """Handles all slash commands."""
     cmd, _, args = line[1:].partition(' ')
     
@@ -20,8 +31,8 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
         buf.append(("System", "[bold yellow]Message buffer cleared.[/]", False))
 
     elif cmd == "who":
-        state.room_participants.add(nick)
-        users = sorted(list(state.room_participants))
+        state.room_participants[nick] = time.time()
+        users = sorted(list(state.room_participants.keys()))
         buf.append(("System", f"[bold]=== ONLINE ({len(users)}) ===[/]", False))
         for u in users:
             if u == nick:
@@ -34,6 +45,11 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
         help_text = {
             "/help": "Show this help message.",
             "/who": "List users currently in the room.",
+            "/share-room [--uses N] [--ttl 10m]": "Generate a temporary, secure link to share this room.",
+            "/copy-link": "Copy the last generated room link to the clipboard.",
+            "/lottery": "Start or participate in a lottery. Use `/lottery help` for details.",
+            "/poll": "Create a poll. `/poll \"Q\" | \"A1\" | \"A2\"`",
+            "/vote": "Vote in a poll. `/vote <option_number>`",
             "/files": "List available files for download.",
             "/download <id>": "Download a file by its ID.",
             "/share <file>": "Share a file with the room.",
@@ -65,6 +81,150 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
         recv_msgs = total_msgs - my_msgs
         buf.append(("System", f"Messages - Sent: [bold green]{my_msgs}[/], Received: [bold cyan]{recv_msgs}[/], Total: [bold]{total_msgs}[/]", False))
         trim(buf)
+
+    elif cmd == "lottery":
+        sub_cmd, _, _ = args.partition(' ')
+        sub_cmd = sub_cmd.lower().strip()
+
+        lottery = state.lottery_state.get(room)
+
+        if sub_cmd == "start":
+            if lottery:
+                buf.append(("System", "[bold yellow]A lottery is already running in this room.[/]", False))
+            else:
+                # This command is now sent to all users to update their state
+                enqueue_sys(room, nick, "LOTTERY_START", server, f)
+        
+        elif sub_cmd == "enter":
+            if not lottery:
+                buf.append(("System", "[bold red]There is no active lottery to enter.[/]", False))
+            elif nick in lottery["participants"]:
+                buf.append(("System", f"[yellow]You have already entered the lottery.[/]", False))
+            else:
+                enqueue_sys(room, nick, "LOTTERY_ENTER", server, f)
+        
+        elif sub_cmd == "status":
+            if not lottery:
+                buf.append(("System", "[bold red]No lottery is currently active.[/]", False))
+            else:
+                count = len(lottery['participants'])
+                participants = sorted(list(lottery['participants']))
+                
+                status_text = Text()
+                status_text.append("Started by: ", style="default")
+                status_text.append(lottery['starter'], style="bold cyan")
+                status_text.append(f"\nParticipants ({count}):\n", style="default")
+                
+                if not participants:
+                    status_text.append("  (No one has entered yet)", style="dim")
+                else:
+                    for p in participants:
+                        status_text.append(f"  • {p}\n", style="magenta")
+
+                panel = Panel(
+                    status_text,
+                    title="[bold]🎲 Lottery Status[/]",
+                    border_style="blue",
+                    padding=(1, 2)
+                )
+                buf.append(("System", panel, False))
+
+        elif sub_cmd == "draw":
+            if not lottery:
+                buf.append(("System", "[bold red]There is no active lottery to draw a winner from.[/]", False))
+            elif lottery["starter"] != nick:
+                buf.append(("System", f"[bold red]Only the lottery starter ([cyan]{lottery['starter']}[/]) can draw a winner.[/]", False))
+            elif not lottery["participants"]:
+                buf.append(("System", "[bold yellow]There are no participants in the lottery.[/]", False))
+            else:
+                winner = random.choice(list(lottery["participants"]))
+                # Announce winner to everyone
+                enqueue_sys(room, nick, f"LOTTERY_WINNER {winner}", server, f)
+
+        elif sub_cmd == "cancel":
+            if not lottery:
+                buf.append(("System", "[bold red]There is no active lottery to cancel.[/]", False))
+            elif lottery["starter"] != nick:
+                buf.append(("System", f"[bold red]Only the lottery starter ([cyan]{lottery['starter']}[/]) can cancel it.[/]", False))
+            else:
+                enqueue_sys(room, nick, "LOTTERY_CANCEL", server, f)
+        
+        else: # Help for the lottery command
+            buf.append(("System", "[bold]🎲 Lottery Commands[/]", False))
+            buf.append(("System", "  [bold cyan]/lottery start[/] - Start a new lottery.", False))
+            buf.append(("System", "  [bold cyan]/lottery enter[/] - Join the current lottery.", False))
+            buf.append(("System", "  [bold cyan]/lottery status[/] - View lottery status.", False))
+            buf.append(("System", "  [bold cyan]/lottery draw[/] - Draw a winner (starter only).", False))
+            buf.append(("System", "  [bold cyan]/lottery cancel[/] - Cancel the lottery (starter only).", False))
+        
+        trim(buf)
+
+    elif cmd == "poll":
+        poll = state.poll_state.get(room)
+        
+        # Sub-commands for an existing poll
+        if args.lower() == 'status':
+            if not poll:
+                buf.append(("System", "[bold red]No poll is currently active.[/]", False))
+                return
+            # The status is now generated dynamically based on the shared state
+            # which is updated by the network listener.
+            options_text = ""
+            total_votes = 0
+            for i, option in enumerate(poll['options']):
+                vote_count = len(poll['votes'].get(str(i), []))
+                total_votes += vote_count
+                options_text += f"  [cyan]{i+1}.[/] {option} [bold]({vote_count} votes)[/]\n"
+            
+            poll_text = Text.from_markup(f"[bold]{poll['question']}[/]\n\n{options_text}\n[dim]Total votes: {total_votes}[/]")
+            panel = Panel(poll_text, title="[bold blue]📊 Poll Status[/]", border_style="blue", padding=(1, 2))
+            buf.append(("System", panel, False))
+            return
+
+        elif args.lower() == 'close':
+            if not poll:
+                buf.append(("System", "[bold red]No poll to close.[/]", False))
+            elif poll['starter'] != nick:
+                buf.append(("System", f"[bold red]Only the poll starter ([cyan]{poll['starter']}[/]) can close it.[/]", False))
+            else:
+                enqueue_sys(room, nick, "POLL_CLOSE", server, f)
+            return
+
+        # Create a new poll
+        if poll:
+            buf.append(("System", "[bold yellow]A poll is already running in this room. Close it first with `/poll close`.[/]", False))
+            return
+
+        parts = [p.strip().strip('"') for p in args.split('|')]
+        if len(parts) < 3:
+            buf.append(("System", "[bold red]Usage: /poll \"Question\" | \"Option 1\" | \"Option 2\"[/]", False))
+            return
+
+        question, *options = parts
+        if len(options) > 10:
+             buf.append(("System", "[bold red]Maximum of 10 options allowed.[/]", False))
+             return
+        
+        poll_data = {"question": question, "options": options}
+        enqueue_sys(room, nick, f"POLL_START {json.dumps(poll_data)}", server, f)
+
+    elif cmd == "vote":
+        poll = state.poll_state.get(room)
+        if not poll:
+            buf.append(("System", "[bold red]There is no active poll to vote in.[/]", False))
+            return
+
+        try:
+            choice = int(args.strip())
+            if not (1 <= choice <= len(poll['options'])):
+                raise ValueError
+        except (ValueError, IndexError):
+            buf.append(("System", f"[bold red]Invalid choice. Use a number between 1 and {len(poll['options'])}.[/]", False))
+            return
+        
+        # The check for whether a user has already voted is removed.
+        # The listener now handles vote changes correctly by moving the user's vote.
+        enqueue_sys(room, nick, f"POLL_VOTE {choice - 1}", server, f)
 
     elif cmd == "security":
         if is_public:
@@ -174,11 +334,21 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
             os.remove(temp_path)
             size_mb = state.available_files[file_id]['metadata']['size'] / (1024 * 1024)
             rel_path = os.path.relpath(local_path)
-            buf.append(("System", f"[bold green]✅ Downloaded: {os.path.basename(local_path)} ({size_mb:.1f}MB)[/]", False))
-            buf.append(("System", f"   [dim]Saved to: {rel_path}[/]", False))
-            # --- We keep the file available for others to download ---
-            # del state.available_files[file_id]
-            # del state.file_chunks[file_id]
+            
+            filename_escaped = escape(os.path.basename(local_path))
+            rel_path_escaped = escape(rel_path)
+            
+            panel_text = f"• [bold]File:[/bold] [cyan]{filename_escaped}[/]\n"
+            panel_text += f"• [bold]Size:[/bold] [cyan]{size_mb:.1f}MB[/]\n"
+            panel_text += f"• [bold]Saved To:[/bold] [dim]{rel_path_escaped}[/dim]"
+
+            panel = Panel(
+                Text.from_markup(panel_text),
+                title="[bold green]✅ Download Complete[/]",
+                border_style="green",
+                padding=(1, 2)
+            )
+            buf.append(("System", panel, False))
         except Exception as e:
             buf.append(("System", f"[bold red]❌ Save failed: {e}[/]", False))
             if os.path.exists(temp_path):
@@ -195,7 +365,7 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
             buf.append(("System", f"[bold red]❌ File not found: {filepath}[/]", False))
             return
 
-        buf.append(("System", f"🔍 Preparing to share [cyan]{os.path.basename(filepath)}[/]...", False))
+        buf.append(("System", f"🔍 Preparing to share [cyan]{escape(os.path.basename(filepath))}[/]...", False))
         metadata, chunks = file_transfer.split_file_to_chunks(filepath, f)
         if not metadata:
             buf.append(("System", f"[bold red]❌ {chunks}[/]", False)) # chunks contains error
@@ -207,7 +377,19 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
             file_transfer.enqueue_file_chunk(room, nick, chunk, server, f)
         
         size_mb = metadata['size'] / (1024 * 1024)
-        buf.append(("System", f"[bold green]📤 Sharing started: {metadata['filename']} ({size_mb:.1f}MB)[/]", False))
+        
+        filename_escaped = escape(metadata['filename'])
+        panel_text = f"• [bold]File:[/bold] [cyan]{filename_escaped}[/]\n"
+        panel_text += f"• [bold]Size:[/bold] [cyan]{size_mb:.1f}MB[/]\n\n"
+        panel_text += "[dim]Your file is now being uploaded in the background.[/dim]"
+
+        panel = Panel(
+            Text.from_markup(panel_text),
+            title="[bold green]📤 Sharing Started[/]",
+            border_style="green",
+            padding=(1, 2)
+        )
+        buf.append(("System", panel, False))
         trim(buf)
 
     elif cmd == "server":
@@ -218,6 +400,64 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, i
             status = "[bold red]🔴 Offline/Unreachable[/]"
         buf.append(("System", f"🌐 Server: [cyan]{server}[/]", False))
         buf.append(("System", f"   Status: {status}", False))
+        trim(buf)
+
+    elif cmd == "share-room":
+        if is_public:
+            buf.append(("System", "[bold red]Cannot share a public room.[/]", False))
+            return
+
+        # --- Argument Parsing ---
+        uses = None
+        ttl_seconds = None
+        try:
+            parts = shlex.split(args)
+            for i, part in enumerate(parts):
+                if part == "--uses" and i + 1 < len(parts):
+                    uses = int(parts[i+1])
+                elif part == "--ttl" and i + 1 < len(parts):
+                    ttl_seconds = link_sharing._parse_time_to_seconds(parts[i+1])
+                    if ttl_seconds is None:
+                        buf.append(("System", f"[bold red]Invalid time format for --ttl: '{parts[i+1]}'. Use '10m', '2h', '1d'.[/]", False))
+                        return
+        except ValueError:
+            buf.append(("System", "[bold red]Invalid argument for --uses. Must be a number.[/]", False))
+            return
+
+        buf.append(("System", "[yellow]Generating secure room link...[/]", False))
+        
+        payload, key = link_sharing.generate_link_components(room, secret, server)
+        session_id = link_sharing.create_remote_session(payload, ttl=ttl_seconds, uses=uses)
+        
+        if not session_id:
+            buf.append(("System", "[bold red]Failed to create share link. The link server may be down.[/]", False))
+            return
+            
+        url = link_sharing.construct_share_url(session_id, key)
+        state.last_generated_link = url  # Store the link
+        
+        # --- Create descriptive text for the panel ---
+        description_string = "✅ [bold green]Link successfully generated.[/]\n\n"
+        description_string += f"• [bold]Uses:[/bold] This link can be used [cyan]{uses or 1}[/cyan] time(s).\n"
+        description_string += f"• [bold]Expires:[/bold] This link will expire in [cyan]{int((ttl_seconds or 900) / 60)}[/cyan] minutes.\n\n"
+        
+        escaped_url = escape(url)
+        description_string += f"🔗 [bold]Link:[/bold] [yellow]{escaped_url}[/]\n\n"
+        
+        description_string += "To copy the link to your clipboard, type: [bold cyan]/copy-link[/]"
+
+        panel = Panel(Text.from_markup(description_string), title="[bold green]🔗 Room Invitation Link[/]", border_style="green", padding=(1,2))
+        buf.append(("System", panel, False))
+        trim(buf)
+
+    elif cmd == "copy-link":
+        if not state.last_generated_link:
+            buf.append(("System", "[bold red]No link has been generated yet. Use /share-room first.[/]", False))
+        elif copy_to_clipboard(state.last_generated_link):
+            buf.append(("System", Text.from_markup("✅ [bold green]Link copied to clipboard![/]"), False))
+        else:
+            buf.append(("System", Text.from_markup("❌ [bold yellow]Could not copy to clipboard.[/]"), False))
+            buf.append(("System", "[dim]Please install 'pyperclip' (`pip install pyperclip`) to enable this feature.[/dim]", False))
         trim(buf)
 
     else:

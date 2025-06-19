@@ -34,26 +34,12 @@ if ! command_exists python3; then
     echo_error "python3 is not installed. Please install it manually."
 fi
 
-echo_info "Checking for python3-venv module..."
-if ! python3 -m venv --help >/dev/null 2>&1; then
-    echo_info "python3-venv not found. Attempting to install it..."
-
-    if command_exists apt; then
-        sudo apt update && sudo apt install -y python3-venv
-    elif command_exists dnf; then
-        sudo dnf install -y python3-venv
-    elif command_exists pacman; then
-        sudo pacman -Sy --noconfirm python-virtualenv
-    else
-        echo_error "Could not install python3-venv automatically. Please install it manually for your system."
-    fi
-fi
-echo_success "Python and virtual environment support verified."
+# The pre-check for venv is removed as it can be unreliable on some distros.
+# We will now attempt to create the venv directly and handle the failure if it occurs.
 
 # --- Setup application directory and virtual environment ---
 echo_info "Setting up installation directory at $INSTALL_DIR..."
 mkdir -p "$INSTALL_DIR"
-
 echo_info "Creating Python virtual environment..."
 set +e
 VENV_CREATE_OUTPUT=$(python3 -m venv "$VENV_DIR" 2>&1)
@@ -61,23 +47,33 @@ VENV_EXIT_CODE=$?
 set -e
 
 if [ $VENV_EXIT_CODE -ne 0 ]; then
-    # Check for a common Debian/Ubuntu issue
-    if [[ "$MACHINE" == "Linux" && -f /etc/os-release ]] && (grep -q -E 'ID=(ubuntu|debian)' /etc/os-release); then
-        if echo "$VENV_CREATE_OUTPUT" | grep -q "ensurepip"; then
-            echo_error "Failed to create virtual environment. This is a known issue on Debian/Ubuntu."
-            echo_info "The 'python3-venv' package is required. Please install it by running:"
-            echo_info "  sudo apt update && sudo apt install python3-venv -y"
-            echo_info "After installation, please run this script again."
-            exit 1
-        fi
-    fi
+    # Venv creation failed. Let's try to diagnose and fix it automatically.
+    echo_info "Initial virtual environment creation failed. Diagnosing..."
 
-    # Generic error for other cases
-    echo_error "Failed to create a virtual environment. Please check your Python 3 installation."
-    echo "--- Start of Error Log ---"
-    echo "$VENV_CREATE_OUTPUT"
-    echo "--- End of Error Log ---"
-    exit 1
+    # Check for the common Debian/Ubuntu 'ensurepip' issue, which indicates python3-venv is missing.
+    if [[ "$MACHINE" == "Linux" && -f /etc/os-release ]] && (grep -q -E 'ID=(ubuntu|debian)' /etc/os-release) && (echo "$VENV_CREATE_OUTPUT" | grep -q "ensurepip"); then
+        echo_info "Detected missing 'python3-venv' package. Attempting to install automatically..."
+        
+        if command_exists apt; then
+            sudo apt-get update && sudo apt-get install -y python3-venv
+            echo_info "'python3-venv' installed. Retrying virtual environment creation..."
+            
+            # Retry creating the venv
+            python3 -m venv "$VENV_DIR"
+            if [ $? -ne 0 ]; then
+                echo_error "Failed to create virtual environment even after installing 'python3-venv'. Please check your Python installation and permissions."
+            fi
+        else
+            echo_error "Automatic installation failed. Please install the equivalent of 'python3-venv' for your distribution and run this script again."
+        fi
+    else
+        # For other errors or other systems, show the generic error.
+        echo_error "Failed to create a virtual environment. Please check your Python 3 installation."
+        echo "--- Start of Error Log ---"
+        echo "$VENV_CREATE_OUTPUT"
+        echo "--- End of Error Log ---"
+        exit 1
+    fi
 fi
 
 echo_success "Virtual environment created."

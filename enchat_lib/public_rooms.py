@@ -15,5 +15,9 @@ PUBLIC_ROOMS = {
     "gaming": (
         "enchat-public-gaming-v1",
         "enchat_gaming_key_456"
+    ),
+    "lottery": (
+        "enchat-public-lottery-v1",
+        "enchat_lottery_key_789"
     )
 } 

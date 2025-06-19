@@ -3,6 +3,10 @@ import hashlib
 import uuid
 import json
 
+from rich.markup import escape
+from rich.panel import Panel
+from rich.text import Text
+
 from . import state, constants, notifications, crypto, session_key
 from .state import outbox_queue
 
@@ -98,12 +102,26 @@ def handle_file_metadata(metadata, sender, buf):
     state.file_chunks[file_id] = {}
     
     size_mb = size / (1024 * 1024)
-    buf.append(("System", f"📎 {sender} shared: {filename} ({size_mb:.1f}MB, {total_chunks} chunks)", False))
+    sender_escaped = escape(sender)
+    filename_escaped = escape(filename)
+    
+    panel_text = f"• [bold]From:[/bold] [cyan]{sender_escaped}[/]\n"
+    panel_text += f"• [bold]File:[/bold] [yellow]{filename_escaped}[/]\n"
+    panel_text += f"• [bold]Size:[/bold] [yellow]{size_mb:.1f}MB[/] ({total_chunks} chunks)\n\n"
     
     if is_complete:
-        buf.append(("System", f"✅ {filename} ready! Use '/download {file_id}' (empty file)", False))
+        panel_text += f"[dim]Use '/download {file_id}' to save this empty file.[/dim]"
     else:
-        buf.append(("System", f"   File ID: {file_id} - Use '/download {file_id}' when complete", False))
+        panel_text += f"• [bold]File ID:[/bold] [magenta]{file_id}[/]\n\n"
+        panel_text += f"[dim]Use '/download {file_id}' once transfer is complete.[/dim]"
+
+    panel = Panel(
+        Text.from_markup(panel_text),
+        title="[bold blue]📎 File Transfer Incoming[/]",
+        border_style="blue",
+        padding=(1, 2)
+    )
+    buf.append(("System", panel, False))
     
     notifications.notify(f"{sender} shared file: {filename}")
 
@@ -113,20 +131,38 @@ def handle_file_chunk(chunk_data, sender, buf):
     chunk_num = chunk_data['chunk_num']
     
     if file_id in state.available_files:
+        # Don't process chunks for files that are already marked as complete.
+        if state.available_files[file_id]['complete']:
+            return
+
         state.file_chunks[file_id][chunk_num] = chunk_data
         state.available_files[file_id]['chunks_received'] = len(state.file_chunks[file_id])
         
         received = state.available_files[file_id]['chunks_received']
         total = state.available_files[file_id]['total_chunks']
         filename = state.available_files[file_id]['metadata']['filename']
+        filename_escaped = escape(filename)
         
-        if received % max(1, total // 10) == 0 or received == total:
-            progress = int((received / total) * 100)
-            buf.append(("System", f"📥 {filename}: {progress}% ({received}/{total})", False))
-        
+        # --- Handle completion ---
         if received == total:
             state.available_files[file_id]['complete'] = True
-            buf.append(("System", f"✅ {filename} ready! Use '/download {file_id}'", False))
+            
+            panel_text = f"• [bold]File:[/bold] [yellow]{filename_escaped}[/]\n"
+            panel_text += f"• [bold]Status:[/bold] [green]100% Complete[/]\n\n"
+            panel_text += f"Ready to be saved with: [bold cyan]/download {file_id}[/]"
+
+            panel = Panel(
+                Text.from_markup(panel_text),
+                title="[bold green]✅ File Ready for Download[/]",
+                border_style="green",
+                padding=(1, 2)
+            )
+            buf.append(("System", panel, False))
+
+        # --- Handle progress (only if not complete) ---
+        elif total > 0 and (received % max(1, total // 10) == 0):
+            progress = int((received / total) * 100)
+            buf.append(("System", f"📥 [yellow]{filename_escaped}[/]: {progress}% ({received}/{total})", False))
 
 def assemble_file_from_chunks(file_id, f_cipher):
     """Assemble file from chunks and save to temp directory"""

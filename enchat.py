@@ -117,7 +117,7 @@ def start_chat(room: str, nick: str, secret: str, server: str, buf: List[Tuple[s
         # Prompt for passphrase if not provided (e.g. on subsequent runs without keychain)
         secret = getpass(f"🔑 Passphrase for room '{room}': ")
 
-    f = Fernet(crypto.gen_key(secret))
+    f = Fernet(crypto.gen_key(secret, room))
     
     # Start the outbox worker thread
     out_stop = threading.Event()

@@ -63,7 +63,7 @@ enchat join-link "https://share.enchat.io/s/AbCdEfGh#key-material-here"
 ```
 
 <div align="center">
-  <img src="https://sudosallie.com/enchat.png" alt="Enchat Interface" width="800">
+  <img src="https://sudosallie.com/enchat-preview.png" alt="Enchat Interface" width="800">
 </div>
 
 ---

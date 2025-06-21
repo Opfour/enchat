@@ -105,6 +105,14 @@ Share documents, images, and other files with the same end-to-end encryption use
 
 ---
 
+## Enhance your development workflows
+
+Enchat is designed to integrate seamlessly into your development process. Use it to collaborate with colleagues, share code snippets, and transfer files without ever leaving the terminal. The GIF below demonstrates how Enchat can be used in a development environment to communicate with team members and share files securely.
+
+![Enchat Action](https://sudosallie.com/enchat-action.gif)
+
+---
+
 ## ⌨️ All In-Chat Commands
 
 | Command | Description | Example |

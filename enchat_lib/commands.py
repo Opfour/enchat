@@ -300,7 +300,17 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, s
         trim(buf)
         
     elif cmd == "download":
-        file_id = args.strip()
+        # Use shlex to safely parse the arguments and get the first one.
+        try:
+            parsed_args = shlex.split(args)
+            if not parsed_args:
+                buf.append(("System", "[bold red]❌ Usage: /download <file_id>[/]", False))
+                return
+            file_id = parsed_args[0]
+        except ValueError:
+            # This can happen with unclosed quotes, etc.
+            file_id = args.strip().split()[0] if args.strip() else ""
+
         if not file_id:
             buf.append(("System", "[bold red]❌ Usage: /download <file_id>[/]", False))
             return
@@ -335,6 +345,9 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, s
             size_mb = state.available_files[file_id]['metadata']['size'] / (1024 * 1024)
             rel_path = os.path.relpath(local_path)
             
+            # Announce the download to the room
+            enqueue_sys(room, nick, f"FILE_DOWNLOAD {file_id}", server, f)
+
             filename_escaped = escape(os.path.basename(local_path))
             rel_path_escaped = escape(rel_path)
             
@@ -371,10 +384,8 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, s
             buf.append(("System", f"[bold red]❌ {chunks}[/]", False)) # chunks contains error
             return
         
-        # Enqueue metadata and then chunks
-        file_transfer.enqueue_file_meta(room, nick, metadata, server, f)
-        for chunk in chunks:
-            file_transfer.enqueue_file_chunk(room, nick, chunk, server, f)
+        # Enqueue the entire file transfer as a single atomic operation
+        file_transfer.enqueue_file_transfer(room, nick, metadata, chunks, server, f)
         
         size_mb = metadata['size'] / (1024 * 1024)
         

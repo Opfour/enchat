@@ -69,6 +69,7 @@ def outbox_worker(stop_evt: threading.Event):
             continue
         
         try:
+            # --- Key Rotation Check (for all message types) ---
             if session_key.should_rotate_key(room):
                 new_key = session_key.generate_session_key()
                 session_key.set_session_key(room, new_key)
@@ -81,6 +82,7 @@ def outbox_worker(stop_evt: threading.Event):
 
             current_key = session_key.get_session_key(room)
             if not current_key:
+                # This can happen on first message, so we generate a key.
                 current_key = session_key.generate_session_key()
                 session_key.set_session_key(room, current_key)
                 encrypted_key = session_key.encrypt_session_key(current_key, f)
@@ -89,33 +91,66 @@ def outbox_worker(stop_evt: threading.Event):
                     session.post(f"{server}/{room}", data=body, timeout=15)
                 except Exception:
                     pass
+            
+            # --- Message Sending Logic ---
+            if kind == "FILE_TRANSFER":
+                # Special handler for atomic file transfers
+                metadata = payload['metadata']
+                chunks = payload['chunks']
+                
+                # 1. Send metadata
+                meta_json = json.dumps(metadata)
+                ts = int(time.time())
+                msg_to_encrypt = f'{ts}|{nick}|{meta_json}'
+                session_encrypted = session_key.encrypt_with_session(msg_to_encrypt, current_key)
+                body = f"FILEMETA:{crypto.encrypt(session_encrypted, f)}"
+                _send_with_retry(server, room, body, "file metadata", stop_evt)
+                
+                # 2. Send all chunks using the same key
+                for chunk in chunks:
+                    chunk_json = json.dumps(chunk)
+                    ts = int(time.time())
+                    msg_to_encrypt = f'{ts}|{nick}|{chunk_json}'
+                    session_encrypted = session_key.encrypt_with_session(msg_to_encrypt, current_key)
+                    body = f"FILECHUNK:{crypto.encrypt(session_encrypted, f)}"
+                    # We don't retry chunks aggressively to avoid holding up the queue
+                    try:
+                        session.post(f"{server}/{room}", data=body, timeout=15)
+                    except Exception:
+                        pass # Ignore chunk send errors for now
+                continue
 
-            if kind in ["MSG", "SYS", "FILEMETA", "FILECHUNK"]:
+            elif kind in ["MSG", "SYS"]:
                 ts = int(time.time())
                 content = f"SYSTEM:{payload}" if kind == "SYS" else payload
                 msg_to_encrypt = f'{ts}|{nick}|{content}'
                 session_encrypted = session_key.encrypt_with_session(msg_to_encrypt, current_key)
                 body = f"{kind}:{crypto.encrypt(session_encrypted, f)}"
+                _send_with_retry(server, room, body, kind.lower(), stop_evt)
+
             else:
                 continue
-            
-            url = f"{server}/{room}"
-            retry, delay = 0, 2
-            while retry < 6 and not stop_evt.is_set():
-                try:
-                    r = session.post(url, data=body, timeout=15)
-                    if r.status_code == 200:
-                        break
-                    delay = int(r.headers.get("Retry-After", delay)) if r.status_code == 429 else min(delay * 2, 30)
-                except Exception:
-                    delay = min(delay * 2, 30)
-                retry += 1
-                time.sleep(delay)
 
-            if retry >= 6:
-                console.log(f"[red]✗ could not deliver {kind.lower()} after retries[/]")
         finally:
             state.outbox_queue.task_done()
+
+def _send_with_retry(server, room, body, kind_str, stop_evt):
+    """Helper to send a message with a retry mechanism."""
+    url = f"{server}/{room}"
+    retry, delay = 0, 2
+    while retry < 6 and not stop_evt.is_set():
+        try:
+            r = session.post(url, data=body, timeout=15)
+            if r.status_code == 200:
+                return
+            delay = int(r.headers.get("Retry-After", delay)) if r.status_code == 429 else min(delay * 2, 30)
+        except Exception:
+            delay = min(delay * 2, 30)
+        retry += 1
+        time.sleep(delay)
+
+    if retry >= 6:
+        console.log(f"[red]✗ could not deliver {kind_str} after retries[/]")
 
 def listener(room, nick, f, server, buf, stop_evt: threading.Event, shutdown_event: threading.Event):
     """Worker thread for listening to SSE events."""
@@ -209,6 +244,14 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event, shutdown_eve
                             buf.append(("System", f"[dim]{sender} left[/dim]", False))
                             notifications.notify(f"{sender} left")
 
+                        elif evt.startswith("FILE_DOWNLOAD"):
+                            _, _, file_id = evt.partition(' ')
+                            if file_id in state.available_files:
+                                filename = state.available_files[file_id]['metadata']['filename']
+                                buf.append(("System", f"📥 [bold cyan]{sender}[/] downloaded file \"{escape(filename)}\" ([dim]{file_id}[/dim])", False))
+                            else:
+                                buf.append(("System", f"📥 [bold cyan]{sender}[/] downloaded file [dim]{file_id}[/dim]", False))
+
                         elif evt.startswith("POLL_"):
                             poll_evt, _, extra = evt.partition(' ')
 
@@ -284,12 +327,12 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event, shutdown_eve
                         try:
                             metadata = json.loads(content)
                             file_transfer.handle_file_metadata(metadata, sender, buf)
-                        except json.JSONDecodeError: pass
+                        except (json.JSONDecodeError, KeyError): pass
                     elif raw_type == "FILECHUNK":
                         try:
                             chunk_data = json.loads(content)
                             file_transfer.handle_file_chunk(chunk_data, sender, buf)
-                        except json.JSONDecodeError: pass
+                        except (json.JSONDecodeError, KeyError): pass
                     else:  # MSG
                         state.room_participants[sender] = time.time()
                         

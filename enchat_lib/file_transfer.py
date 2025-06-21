@@ -84,37 +84,33 @@ def split_file_to_chunks(filepath, f_cipher):
         return None, f"Error reading file: {e}"
 
 def handle_file_metadata(metadata, sender, buf):
-    """Handle incoming file metadata"""
+    """Handle incoming file metadata, resilient to out-of-order messages."""
     file_id = metadata['file_id']
-    filename = metadata['filename']
-    size = metadata['size']
-    total_chunks = metadata['total_chunks']
     
-    is_complete = (total_chunks == 0)
-    
-    state.available_files[file_id] = {
-        'metadata': metadata,
-        'sender': sender,
-        'chunks_received': 0,
-        'total_chunks': total_chunks,
-        'complete': is_complete
-    }
-    state.file_chunks[file_id] = {}
-    
-    size_mb = size / (1024 * 1024)
+    # If this is the first we're hearing of this file, create its state.
+    if file_id not in state.available_files:
+        state.file_chunks[file_id] = {}
+        state.available_files[file_id] = {
+            'sender': sender,
+            'chunks_received': 0,
+            'complete': False
+        }
+        
+    # Update the state with the authoritative metadata.
+    state.available_files[file_id]['metadata'] = metadata
+    state.available_files[file_id]['total_chunks'] = metadata['total_chunks']
+
+    # Display the initial notification panel.
+    size_mb = metadata['size'] / (1024 * 1024)
     sender_escaped = escape(sender)
-    filename_escaped = escape(filename)
+    filename_escaped = escape(metadata['filename'])
     
     panel_text = f"• [bold]From:[/bold] [cyan]{sender_escaped}[/]\n"
     panel_text += f"• [bold]File:[/bold] [yellow]{filename_escaped}[/]\n"
-    panel_text += f"• [bold]Size:[/bold] [yellow]{size_mb:.1f}MB[/] ({total_chunks} chunks)\n\n"
+    panel_text += f"• [bold]Size:[/bold] [yellow]{size_mb:.1f}MB[/] ({metadata['total_chunks']} chunks)\n\n"
+    panel_text += f"• [bold]File ID:[/bold] [magenta]{file_id}[/]\n\n"
+    panel_text += f"[dim]Use '/download {file_id}' once transfer is complete.[/dim]"
     
-    if is_complete:
-        panel_text += f"[dim]Use '/download {file_id}' to save this empty file.[/dim]"
-    else:
-        panel_text += f"• [bold]File ID:[/bold] [magenta]{file_id}[/]\n\n"
-        panel_text += f"[dim]Use '/download {file_id}' once transfer is complete.[/dim]"
-
     panel = Panel(
         Text.from_markup(panel_text),
         title="[bold blue]📎 File Transfer Incoming[/]",
@@ -122,47 +118,66 @@ def handle_file_metadata(metadata, sender, buf):
         padding=(1, 2)
     )
     buf.append(("System", panel, False))
+    notifications.notify(f"{sender} shared file: {metadata['filename']}")
     
-    notifications.notify(f"{sender} shared file: {filename}")
+    # After receiving metadata, check if previously received chunks complete the file.
+    _check_file_completion(file_id, buf)
 
 def handle_file_chunk(chunk_data, sender, buf):
-    """Handle incoming file chunk"""
+    """Handle incoming file chunk, resilient to out-of-order messages."""
     file_id = chunk_data['file_id']
     chunk_num = chunk_data['chunk_num']
-    
-    if file_id in state.available_files:
-        # Don't process chunks for files that are already marked as complete.
-        if state.available_files[file_id]['complete']:
-            return
 
+    # If this is the first we're hearing of this file, create a placeholder.
+    if file_id not in state.available_files:
+        state.file_chunks[file_id] = {}
+        state.available_files[file_id] = {
+            'metadata': None,
+            'sender': sender,
+            'chunks_received': 0,
+            'total_chunks': -1, # Sentinel for unknown total
+            'complete': False
+        }
+
+    # Don't process chunks for files that are already marked as complete.
+    if state.available_files[file_id]['complete']:
+        return
+
+    # Store the chunk and update the received count.
+    if chunk_num not in state.file_chunks[file_id]:
         state.file_chunks[file_id][chunk_num] = chunk_data
         state.available_files[file_id]['chunks_received'] = len(state.file_chunks[file_id])
-        
-        received = state.available_files[file_id]['chunks_received']
-        total = state.available_files[file_id]['total_chunks']
-        filename = state.available_files[file_id]['metadata']['filename']
-        filename_escaped = escape(filename)
-        
-        # --- Handle completion ---
-        if received == total:
-            state.available_files[file_id]['complete'] = True
-            
-            panel_text = f"• [bold]File:[/bold] [yellow]{filename_escaped}[/]\n"
-            panel_text += f"• [bold]Status:[/bold] [green]100% Complete[/]\n\n"
-            panel_text += f"Ready to be saved with: [bold cyan]/download {file_id}[/]"
 
-            panel = Panel(
-                Text.from_markup(panel_text),
-                title="[bold green]✅ File Ready for Download[/]",
-                border_style="green",
-                padding=(1, 2)
-            )
-            buf.append(("System", panel, False))
+    # Check for completion. This can only happen if metadata has arrived.
+    _check_file_completion(file_id, buf)
 
-        # --- Handle progress (only if not complete) ---
-        elif total > 0 and (received % max(1, total // 10) == 0):
-            progress = int((received / total) * 100)
-            buf.append(("System", f"📥 [yellow]{filename_escaped}[/]: {progress}% ({received}/{total})", False))
+def _check_file_completion(file_id, buf):
+    """Check if a file has all its chunks and notify if complete."""
+    file_info = state.available_files.get(file_id)
+    
+    # Cannot be complete if we don't have metadata or it's already marked complete.
+    if not file_info or not file_info.get('metadata') or file_info.get('complete'):
+        return
+
+    received = file_info['chunks_received']
+    total = file_info['total_chunks']
+    
+    if total > 0 and received == total:
+        file_info['complete'] = True
+        filename_escaped = escape(file_info['metadata']['filename'])
+        
+        panel_text = f"• [bold]File:[/bold] [yellow]{filename_escaped}[/]\n"
+        panel_text += f"• [bold]Status:[/bold] [green]100% Complete[/]\n\n"
+        panel_text += f"Ready to be saved with: [bold cyan]/download {file_id}[/]"
+
+        panel = Panel(
+            Text.from_markup(panel_text),
+            title="[bold green]✅ File Ready for Download[/]",
+            border_style="green",
+            padding=(1, 2)
+        )
+        buf.append(("System", panel, False))
+        notifications.notify(f"File ready to download: {file_info['metadata']['filename']}")
 
 def assemble_file_from_chunks(file_id, f_cipher):
     """Assemble file from chunks and save to temp directory"""
@@ -198,12 +213,10 @@ def assemble_file_from_chunks(file_id, f_cipher):
     except Exception as e:
         return None, f"Error assembling file: {e}"
 
-def enqueue_file_chunk(room, nick, chunk_data, server, f):
-    """Send a file chunk"""
-    chunk_json = json.dumps(chunk_data)
-    outbox_queue.put(("FILECHUNK", room, nick, chunk_json, server, f))
-
-def enqueue_file_meta(room, nick, metadata, server, f):
-    """Send file metadata"""
-    meta_json = json.dumps(metadata)
-    outbox_queue.put(("FILEMETA", room, nick, meta_json, server, f))
+def enqueue_file_transfer(room, nick, metadata, chunks, server, f):
+    """Enqueue the entire file transfer operation."""
+    payload = {
+        "metadata": metadata,
+        "chunks": chunks
+    }
+    outbox_queue.put(("FILE_TRANSFER", room, nick, payload, server, f))

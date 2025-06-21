@@ -185,17 +185,21 @@ class ChatUI:
                 if not line:
                     continue
                 
+                # Command handling and message sending are now mutually exclusive.
                 if line.startswith("/"):
-                    if commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.secret, self.is_public, self.is_tor) == "exit":
+                    res = commands.handle_command(line, self.room, self.nick, self.server, self.f, self.buf, self.secret, self.is_public, self.is_tor)
+                    if res == "exit":
                         self.shutdown_event.set()
                         break
                 else:
+                    # This is a regular message
                     if len(line) > constants.MAX_MSG_LEN:
                         self.buf.append(("System", "❌ Message too long", False, False))
-                        continue
-                    network.enqueue_msg(self.room, self.nick, line, self.server, self.f)
-                    self.buf.append((self.nick, line, True, False))
-                    trim(self.buf)
+                    else:
+                        network.enqueue_msg(self.room, self.nick, line, self.server, self.f)
+                        self.buf.append((self.nick, line, True, False))
+                
+                trim(self.buf)
 
         # The loop has exited, so we just need to stop the listener thread.
         # The main script (enchat.py) will handle sending the "left" message.

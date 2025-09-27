@@ -30,3 +30,4 @@ VERSION = "2.0"
 KEYRING_SERVICE_NAME = "enchat"
 
 USER_TIMEOUT = 60 # seconds. Must be > PING_INTERVAL
+AUTO_CLEANUP_DELAY = 30 # seconds. Delay before auto-cleanup when room becomes empty

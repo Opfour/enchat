@@ -325,6 +325,21 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event, shutdown_eve
 
                         elif evt == "ping":
                             state.room_participants[sender] = time.time()
+                        elif evt == "ROOM_CLEANUP":
+                            # Clear local message buffer when cleanup signal is received
+                            buf.clear()
+                            cleanup_text = Text.from_markup(
+                                f"[bold yellow]🧹 Chat history cleaned by [cyan]{sender}[/].[/]\n\n"
+                                "[dim]All participants' local message history has been cleared.\n"
+                                "New messages will start fresh from this point.[/dim]"
+                            )
+                            panel = Panel(
+                                cleanup_text,
+                                title="[bold yellow]📢 Room Cleaned[/]",
+                                border_style="yellow",
+                                padding=(1, 2)
+                            )
+                            buf.append(("System", panel, False))
                     elif raw_type == "FILEMETA":
                         try:
                             metadata = json.loads(content)

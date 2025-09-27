@@ -130,6 +130,7 @@ Enchat is designed to integrate seamlessly into your development process. Use it
 | **Utilities** | | |
 | `/help` | Show the help message with all available commands. | `/help` |
 | `/clear` | Clear all messages from the terminal window. | `/clear` |
+| `/clean-chat` | Clean chat history for all participants (private rooms only). | `/clean-chat` |
 | `/security` | Display an overview of the current security settings. | `/security` |
 | `/notifications` | Toggle desktop notifications on or off. | `/notifications` |
 | **Fun & Polls** | | |
@@ -149,6 +150,7 @@ Enchat is built on a foundation of **defense-in-depth** and **zero-trust** princ
 - **Double-Layer Encryption:** Messages are first encrypted with the ephemeral session key, and the result is then encrypted again with the main room key.
 - **Server Blindness:** The `ntfy.sh` server (or your self-hosted instance) acts as a blind message relay. It only ever sees encrypted blobs of data and has no ability to decrypt message content, usernames, timestamps, or file data.
 - **Metadata Protection:** All metadata, including timestamps, usernames, and system events (like joins/leaves), is fully encrypted.
+- **Privacy Cleanup:** The `/clean-chat` command allows users to clear chat history for all participants, and rooms automatically clean up when empty to minimize data retention.
 - **Secure Wipe:** The `enchat kill` command securely wipes all local configuration files, logs, and downloaded content.
 
 ### Message Flow Security

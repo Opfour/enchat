@@ -30,6 +30,42 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, s
         buf.clear()
         buf.append(("System", "[bold yellow]Message buffer cleared.[/]", False))
 
+    elif cmd == "clean-chat":
+        if is_public:
+            buf.append(("System", "[bold red]Cannot clean public rooms.[/]", False))
+            return
+        
+        # Check if user is last person in room or if they confirm
+        if len(state.room_participants) > 1:
+            buf.append(("System", "[bold yellow]⚠️ WARNING: This will signal all participants to clean their local chat history.[/]", False))
+            buf.append(("System", "[bold yellow]Are you sure? This action cannot be undone.[/]", False))
+            buf.append(("System", "[bold cyan]Type '/clean-chat confirm' to proceed.[/]", False))
+            if not args.strip() == "confirm":
+                return
+        
+        # Send cleanup signal to all participants
+        enqueue_sys(room, nick, "ROOM_CLEANUP", server, f)
+        
+        # Clear local buffer
+        buf.clear()
+        
+        # Add confirmation message
+        cleanup_text = Text.from_markup(
+            "[bold green]✅ Chat cleanup initiated.[/]\n\n"
+            "• Local message history cleared\n"
+            "• Cleanup signal sent to all participants\n"
+            "• New messages will start fresh\n\n"
+            "[dim]Note: This clears local data only. Server-side encrypted data\n"
+            "will naturally expire based on ntfy retention settings.[/dim]"
+        )
+        panel = Panel(
+            cleanup_text,
+            title="[bold green]🧹 Chat Cleaned[/]",
+            border_style="green",
+            padding=(1, 2)
+        )
+        buf.append(("System", panel, False))
+
     elif cmd == "who":
         state.room_participants[nick] = time.time()
         users = sorted(list(state.room_participants.keys()))
@@ -53,6 +89,7 @@ def handle_command(line: str, room: str, nick: str, server: str, f, buf: list, s
             "/files": "List available files for download.",
             "/download <id>": "Download a file by its ID.",
             "/share <file>": "Share a file with the room.",
+            "/clean-chat": "Clean chat history for all participants (private rooms only).",
             "/security": "Display security status.",
             "/server": "Show current server info.",
             "/notifications": "Toggle desktop notifications on/off.",

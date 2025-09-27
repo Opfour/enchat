@@ -63,6 +63,35 @@ class ChatUI:
                     if poll and poll["starter"] == user:
                         network.enqueue_sys(self.room, self.nick, "POLL_CLOSE", self.server, self.f)
                         self.buf.append(("System", Text.from_markup(f"[yellow]The poll was automatically closed because the starter, [cyan]{user}[/], left.[/]"), False))
+            
+            # Check if room is now empty (only current user left) and auto-cleanup if enabled
+            if not self.is_public and len(state.room_participants) <= 1:
+                # Room is empty or only current user left - initiate cleanup in background
+                threading.Thread(target=self._initiate_auto_cleanup, daemon=True).start()
+
+    def _initiate_auto_cleanup(self):
+        """Automatically clean up when room becomes empty."""
+        # Add a delay to avoid cleanup during temporary disconnections
+        time.sleep(constants.AUTO_CLEANUP_DELAY)
+        
+        # Re-check if room is still empty after delay
+        if not self.is_public and len(state.room_participants) <= 1:
+            # Clear local buffer
+            self.buf.clear()
+            
+            # Add auto-cleanup notification
+            cleanup_text = Text.from_markup(
+                "[bold blue]🤖 Auto-cleanup activated[/]\n\n"
+                "The room became empty and chat history has been automatically cleared.\n"
+                "[dim]This helps protect privacy by removing old encrypted messages.[/dim]"
+            )
+            panel = Panel(
+                cleanup_text,
+                title="[bold blue]🧹 Auto-Cleanup[/]",
+                border_style="blue", 
+                padding=(1, 2)
+            )
+            self.buf.append(("System", panel, False))
 
     def _head(self):
         parts = [

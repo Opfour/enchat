@@ -196,6 +196,19 @@ Enchat is a free, open-source project developed in my spare time. If you find it
 
 ---
 
+## 💼 Professional Services
+
+Need help with enchat? I offer paid consulting for:
+
+- **Custom enchat solutions** and feature development
+- **Custom commands** and functionality
+- **Server setup** and deployment assistance  
+- **General enchat consulting** and advice
+
+**Contact**: [info@enchat.io](mailto:info@enchat.io) for rates and availability.
+
+---
+
 ## 📜 License
 Copyright © 2025 sudodevdante. All rights reserved.
 

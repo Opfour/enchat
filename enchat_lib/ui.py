@@ -32,6 +32,11 @@ class ChatUI:
         self.last_len = len(buf)
         self.last_input = ""
         self.last_terminal_size = (0, 0)
+        
+        # Performance optimizations
+        self._measure_console = None
+        self._last_terminal_check = 0
+        self._message_height_cache = {}  # Cache for message height calculations
 
     def _reaper(self):
         """A background thread to remove users who have timed out."""
@@ -75,6 +80,42 @@ class ChatUI:
         
         return Panel(Text.assemble(*parts), style="blue")
 
+    def _get_message_height(self, renderable, content_width):
+        """Efficiently calculate message height with caching."""
+        # Create a simple hash key for the renderable
+        if hasattr(renderable, '__str__'):
+            cache_key = (str(renderable), content_width)
+        else:
+            cache_key = (repr(renderable), content_width)
+        
+        if cache_key in self._message_height_cache:
+            return self._message_height_cache[cache_key]
+        
+        # Initialize measure console once and reuse
+        if self._measure_console is None or self._measure_console.size.width != content_width:
+            self._measure_console = RichConsole(width=content_width, file=StringIO())
+        
+        # Clear the StringIO buffer
+        self._measure_console.file.seek(0)
+        self._measure_console.file.truncate(0)
+        
+        self._measure_console.print(renderable)
+        output = self._measure_console.file.getvalue()
+        msg_height = output.count('\n')
+        
+        if msg_height == 0 and output.strip():
+            msg_height = 1
+            
+        # Cache the result, but limit cache size to prevent memory issues
+        if len(self._message_height_cache) > 100:
+            # Keep only the most recent 50 entries
+            keys_to_remove = list(self._message_height_cache.keys())[:-50]
+            for key in keys_to_remove:
+                del self._message_height_cache[key]
+        
+        self._message_height_cache[cache_key] = msg_height
+        return msg_height
+
     def _body(self):
         try:
             terminal_size = shutil.get_terminal_size()
@@ -88,8 +129,12 @@ class ChatUI:
         renderables = []
         current_height = 0
 
-        # Iterate backwards through the buffer to get the latest messages first
-        for msg in reversed(self.buf):
+        # Start from the end and work backwards, but limit how far we look
+        # Most terminals show 20-50 lines, so we rarely need to check more than 60 messages
+        start_idx = max(0, len(self.buf) - min(60, available_height * 3))
+        messages_to_check = list(reversed(self.buf[start_idx:]))
+
+        for msg in messages_to_check:
             sender, content, own = msg[0], msg[1], msg[2]
             is_mention = msg[3] if len(msg) > 3 else False
             
@@ -114,14 +159,8 @@ class ChatUI:
                     message_text.append(content)
                 renderable = message_text
             
-            # Render to a temporary console to accurately measure the true height
-            measure_console = RichConsole(width=content_width, file=StringIO())
-            measure_console.print(renderable)
-            output = measure_console.file.getvalue()
-            msg_height = output.count('\n')
-            
-            if msg_height == 0 and output.strip():
-                msg_height = 1
+            # Use optimized height calculation
+            msg_height = self._get_message_height(renderable, content_width)
 
             if current_height + msg_height > available_height:
                 break
@@ -153,20 +192,28 @@ class ChatUI:
                 time.sleep(constants.PING_INTERVAL)
         threading.Thread(target=pinger, daemon=True).start()
 
-        with Live(self.layout, refresh_per_second=10, screen=False) as live:
+        with Live(self.layout, refresh_per_second=8, screen=False) as live:
             while not self.shutdown_event.is_set():
+                current_time = time.time()
+                
+                # Check for buffer or input changes
                 if len(self.buf) != self.last_len or "".join(state.current_input) != self.last_input:
                     self.redraw = True
                     self.last_len = len(self.buf)
                     self.last_input = "".join(state.current_input)
 
-                try:
-                    current_size = shutil.get_terminal_size()
-                    if (current_size.lines, current_size.columns) != self.last_terminal_size:
-                        self.last_terminal_size = (current_size.lines, current_size.columns)
-                        self.redraw = True
-                except:
-                    pass
+                # Only check terminal size every 0.5 seconds to reduce system calls
+                if current_time - self._last_terminal_check > 0.5:
+                    try:
+                        current_size = shutil.get_terminal_size()
+                        if (current_size.lines, current_size.columns) != self.last_terminal_size:
+                            self.last_terminal_size = (current_size.lines, current_size.columns)
+                            self.redraw = True
+                            # Clear height cache when terminal size changes
+                            self._message_height_cache.clear()
+                    except:
+                        pass
+                    self._last_terminal_check = current_time
 
                 if self.redraw:
                     self.layout["header"].update(self._head())

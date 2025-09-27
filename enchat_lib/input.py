@@ -15,7 +15,7 @@ def _posix():
         while True:
             # Check if there is data to be read on stdin
             import select
-            if select.select([sys.stdin], [], [], 0.05)[0]:
+            if select.select([sys.stdin], [], [], 0.1)[0]:  # Increased timeout
                 ch = sys.stdin.read(1)
                 if ch in ("\n", "\r"):
                     state.input_queue.put("".join(state.current_input))
@@ -27,8 +27,8 @@ def _posix():
                 else:
                     state.current_input.append(ch)
             else:
-                # Sleep briefly to prevent busy-waiting
-                time.sleep(0.05)
+                # Slightly longer sleep to reduce CPU usage
+                time.sleep(0.02)
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
@@ -47,7 +47,7 @@ def _win():
                 state.current_input.pop()
             else:
                 state.current_input.append(ch)
-        time.sleep(0.05)
+        time.sleep(0.02)  # Reduced sleep for better responsiveness
 
 def start_char_thread():
     """Starts the appropriate non-blocking input thread based on the OS."""

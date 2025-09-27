@@ -172,7 +172,9 @@ def listener(room, nick, f, server, buf, stop_evt: threading.Event, shutdown_eve
                     if h in seen: continue
                     seen.add(h)
                     if len(seen) > constants.MAX_SEEN:
-                        seen = set(list(seen)[-constants.MAX_SEEN:])
+                        # More efficient way to trim the set
+                        excess = len(seen) - (constants.MAX_SEEN // 2)
+                        seen = set(list(seen)[excess:])
                     
                     raw_type, _, raw_content = raw.partition(':')
 
